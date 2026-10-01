@@ -1,3 +1,5 @@
+This project is a WIP project. This repository is currently for backup and version control purpose only
+
 # Security Data Aggregator
 
 Pulls normalized security events from Wazuh, Splunk, Microsoft Sentinel,
