@@ -1,0 +1,2 @@
+# Edges to drop after parsing (e.g. a wrong CWE assignment found during review).
+type,src_label,src_key,dst_label,dst_key,note
