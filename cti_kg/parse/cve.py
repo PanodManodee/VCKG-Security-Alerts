@@ -6,6 +6,7 @@ CVSS. Both are grouped by the year in the CVE id, so they are joined year by yea
 
 CVSS priority: NVD Primary > NVD Secondary > CNA > CISA-ADP.
 """
+
 import gzip
 import json
 import re
@@ -18,8 +19,19 @@ from ..graph import Graph
 
 CWE_RE = re.compile(r"^CWE-\d+$")
 CPE_SPLIT = re.compile(r"(?<!\\):")
-CPE_FIELDS = ["part", "vendor", "product", "version", "update", "edition", "language",
-              "sw_edition", "target_sw", "target_hw", "other"]
+CPE_FIELDS = [
+    "part",
+    "vendor",
+    "product",
+    "version",
+    "update",
+    "edition",
+    "language",
+    "sw_edition",
+    "target_sw",
+    "target_hw",
+    "other",
+]
 
 
 def load_nvd_year(year: int) -> dict[str, dict]:
@@ -45,6 +57,7 @@ def parse_cpe(cpe23: str) -> dict:
 
 
 # ---- field extraction ----
+
 
 def _en(descs: list) -> str:
     for d in descs or []:
@@ -85,9 +98,13 @@ def _cvss_props(prefix: str, picked) -> dict:
     if not picked:
         return {}
     d, source = picked
-    return {f"{prefix}_score": d.get("baseScore"), f"{prefix}_vector": d.get("vectorString"),
-            f"{prefix}_severity": d.get("baseSeverity"), f"{prefix}_version": d.get("version"),
-            f"{prefix}_source": source}
+    return {
+        f"{prefix}_score": d.get("baseScore"),
+        f"{prefix}_vector": d.get("vectorString"),
+        f"{prefix}_severity": d.get("baseSeverity"),
+        f"{prefix}_version": d.get("version"),
+        f"{prefix}_source": source,
+    }
 
 
 def _ssvc(adps) -> dict:
@@ -95,8 +112,11 @@ def _ssvc(adps) -> dict:
         for m in adp.get("metrics", []) or []:
             other = m.get("other", {})
             if other.get("type") == "ssvc":
-                opts = {k.lower().replace(" ", "_"): v
-                        for o in other["content"].get("options", []) for k, v in o.items()}
+                opts = {
+                    k.lower().replace(" ", "_"): v
+                    for o in other["content"].get("options", [])
+                    for k, v in o.items()
+                }
                 return {f"ssvc_{k}": v for k, v in opts.items()}
     return {}
 
@@ -124,12 +144,22 @@ def _cpe_matches(nvd, cna) -> list[tuple[str, dict, str]]:
         for node in conf.get("nodes", []):
             for m in node.get("cpeMatch", []):
                 if m.get("vulnerable"):
-                    out.append((m["criteria"], {
-                        "version_start_including": m.get("versionStartIncluding"),
-                        "version_start_excluding": m.get("versionStartExcluding"),
-                        "version_end_including": m.get("versionEndIncluding"),
-                        "version_end_excluding": m.get("versionEndExcluding"),
-                    }, "nvd"))
+                    out.append(
+                        (
+                            m["criteria"],
+                            {
+                                "version_start_including": m.get(
+                                    "versionStartIncluding"
+                                ),
+                                "version_start_excluding": m.get(
+                                    "versionStartExcluding"
+                                ),
+                                "version_end_including": m.get("versionEndIncluding"),
+                                "version_end_excluding": m.get("versionEndExcluding"),
+                            },
+                            "nvd",
+                        )
+                    )
     if not out and cna:
         for a in cna.get("affected", []) or []:
             for cpe in a.get("cpes", []) or []:
@@ -140,15 +170,20 @@ def _cpe_matches(nvd, cna) -> list[tuple[str, dict, str]]:
 
 # ---- main ----
 
+
 def add_cve(g: Graph, cve_id: str, rec: dict | None, nvd: dict | None) -> None:
+    """Add CVE node and edges to the graph, using cvelistV5 record and NVD 2.0 record if present."""
     meta = (rec or {}).get("cveMetadata", {})
     containers = (rec or {}).get("containers", {})
     cna = containers.get("cna")
-    adps = [((a.get("providerMetadata", {}).get("shortName") or "adp").lower(), a)
-            for a in containers.get("adp", []) or []]
+    adps = [
+        ((a.get("providerMetadata", {}).get("shortName") or "adp").lower(), a)
+        for a in containers.get("adp", []) or []
+    ]
 
     props = {
-        "description": _en((cna or {}).get("descriptions")) or _en((nvd or {}).get("descriptions")),
+        "description": _en((cna or {}).get("descriptions"))
+        or _en((nvd or {}).get("descriptions")),
         "state": meta.get("state"),
         "assigner": meta.get("assignerShortName"),
         "published": meta.get("datePublished") or (nvd or {}).get("published"),
@@ -156,8 +191,11 @@ def add_cve(g: Graph, cve_id: str, rec: dict | None, nvd: dict | None) -> None:
         "nvd_status": (nvd or {}).get("vulnStatus"),
         "kev_date_added": (nvd or {}).get("cisaExploitAdd"),
         "kev_required_action": (nvd or {}).get("cisaRequiredAction"),
-        **_cvss_props("cvss3", _pick_cvss(nvd, cna, adps, "cvssMetricV31", "cvssV3_1")
-                      or _pick_cvss(nvd, cna, adps, "cvssMetricV30", "cvssV3_0")),
+        **_cvss_props(
+            "cvss3",
+            _pick_cvss(nvd, cna, adps, "cvssMetricV31", "cvssV3_1")
+            or _pick_cvss(nvd, cna, adps, "cvssMetricV30", "cvssV3_0"),
+        ),
         **_cvss_props("cvss4", _pick_cvss(nvd, cna, adps, "cvssMetricV40", "cvssV4_0")),
         **_cvss_props("cvss2", _pick_cvss(nvd, cna, adps, "cvssMetricV2", "cvssV2_0")),
         **_ssvc(adps),
@@ -172,7 +210,9 @@ def add_cve(g: Graph, cve_id: str, rec: dict | None, nvd: dict | None) -> None:
 
     for cpe23, edge_props, s in _cpe_matches(nvd, cna):
         g.add_node("CPE", cpe23, s, **parse_cpe(cpe23))
-        g.add_edge("VULNERABLE_TO", "CPE", cpe23, "Vulnerability", cve_id, s, **edge_props)
+        g.add_edge(
+            "VULNERABLE_TO", "CPE", cpe23, "Vulnerability", cve_id, s, **edge_props
+        )
 
 
 def parse_cves(g: Graph, since_year: int, until_year: int | None = None) -> dict:

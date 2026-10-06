@@ -13,6 +13,7 @@ SCHEMA_CYPHER = Path(__file__).with_name("schema.cypher")
 
 
 def _batches(path: Path):
+    """Create a generator that yields batches of JSON objects from a JSONL file."""
     batch = []
     with open(path) as fh:
         for line in fh:
@@ -24,7 +25,7 @@ def _batches(path: Path):
         yield batch
 
 
-def _count_lines(path: Path) -> int:
+def _count_lines(path: Path) -> int
     with open(path) as fh:
         return sum(1 for _ in fh)
 
@@ -34,6 +35,7 @@ def driver():
 
 
 def apply_schema(session) -> None:
+    """Read Cypher schema from schema.cypher and apply it to the database. This is idempotent."""
     for stmt in SCHEMA_CYPHER.read_text().split(";"):
         lines = [ln for ln in stmt.splitlines() if not ln.strip().startswith("//")]
         if "".join(lines).strip():
@@ -58,6 +60,7 @@ def _run_file(session, f: Path, query: str, desc: str) -> None:
 
 
 def load(processed: Path = config.PROCESSED, do_wipe: bool = False) -> None:
+    """Apply the schema and load all JSONL files in processed into Neo4j. If do_wipe is True, delete all existing nodes and edges first."""
     from ..pipeline import shard_dirs
 
     with driver() as drv, drv.session() as session:
@@ -82,6 +85,7 @@ def load(processed: Path = config.PROCESSED, do_wipe: bool = False) -> None:
 
 
 def db_counts() -> tuple[dict, dict]:
+    """Count number of nodes by label and edges by type in the Neo4j database."""
     with driver() as drv, drv.session() as session:
         nodes = {r["label"]: r["n"] for r in session.run(
             "MATCH (n) UNWIND labels(n) AS label RETURN label, count(*) AS n ORDER BY n DESC")}

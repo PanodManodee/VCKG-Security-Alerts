@@ -66,4 +66,4 @@ Production Stages:
      - Potential solution: secBERT, ML for Text Classification
 
 5. Validation
-   - TBD, consult with proff
+   - TBD, consult with professor
