@@ -1,0 +1,4 @@
+# Platform name aliases applied before fuzzy alignment: alias -> canonical (CWE vocabulary).
+# Edit freely; re-run `python -m cti_kg parse` to apply.
+alias,canonical
+Windows NT,Windows

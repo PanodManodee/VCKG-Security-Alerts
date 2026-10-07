@@ -1,0 +1,3 @@
+# Edges to add by hand; loaded with manual=true. type/labels must exist in cti_kg/schema.py EDGE_TYPES.
+# Example: EXPLOITED_BY,Weakness,CWE-787,Vulnerability,CVE-2024-12345,analyst review 2026-10
+type,src_label,src_key,dst_label,dst_key,note

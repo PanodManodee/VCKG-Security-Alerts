@@ -1,0 +1,8 @@
+neo4j>=5.20
+mitreattack-python>=4.0
+lxml>=5.0
+rapidfuzz>=3.0
+python-dotenv>=1.0
+requests>=2.31
+tqdm>=4.66
+pytest>=8.0

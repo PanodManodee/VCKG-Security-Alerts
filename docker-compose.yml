@@ -1,0 +1,18 @@
+services:
+  neo4j:
+    image: neo4j:5-community
+    container_name: cti-neo4j
+    ports:
+      - "7474:7474"   # browser
+      - "7687:7687"   # bolt
+    environment:
+      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-change-me-please}
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_server_memory_heap_initial__size: 1G
+      NEO4J_server_memory_heap_max__size: 4G
+      NEO4J_server_memory_pagecache_size: 2G
+      NEO4J_db_transaction_timeout: 0
+    volumes:
+      - ./neo4j_data/data:/data
+      - ./neo4j_data/logs:/logs
+    restart: unless-stopped

@@ -1,0 +1,2 @@
+# Fold one node into another (e.g. a wrong automatic split). label is a node label from cti_kg/schema.py.
+label,from_key,to_key,note

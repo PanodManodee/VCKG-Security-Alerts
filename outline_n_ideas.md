@@ -33,47 +33,37 @@ New project scope and ideas:
 Production Stages:
 
 1. Prepare the data
-
-
-    - Gather the CTI data
-      - CVE records
-      - MITRE ATT&CK vectors
-      - (optional) NVD CVE dataset
-      - CWE
-    - Gather the asset data
-      - configure the testing environment
-        - host nodes
-          - valuable assets
-          - priority classification
-        - security tools node
-        - networking nodes
-        - attacker node (outside of the victim nodes)
-          - Kali Linux
-          - Atomic Red Team
+   - Gather the CTI data
+     - CVE records
+     - MITRE ATT&CK vectors
+     - (optional) NVD CVE dataset
+     - CWE
+   - Gather the asset data
+     - configure the testing environment
+       - host nodes
+         - valuable assets
+         - priority classification
+       - security tools node
+       - networking nodes
+       - attacker node (outside of the victim nodes)
+         - Kali Linux
+         - Atomic Red Team
 
 2. Constructing the Knowledge Graph
-
-
-    - Construct CTI Knowledge Graph
-    - Construct Asset Knowledge Graph
-    - Create relational links between the two knowledge graphs
-    - Test and validate the links by test querying
-      - For now, don't know how
+   - Construct CTI Knowledge Graph
+   - Construct Asset Knowledge Graph
+   - Create relational links between the two knowledge graphs
+   - Test and validate the links by test querying
+     - For now, don't know how
 
 3. Querying
-
-
-    - Get alert from secruity tools via there APIs
-    - Extract entities and relations from the alert
-    - Query the knowledge graph to find the path and affected assets
+   - Get alert from secruity tools via there APIs
+   - Extract entities and relations from the alert
+   - Query the knowledge graph to find the path and affected assets
 
 4. Classification
-
-
-    - Calculate the new score relative to its original CVSS score
-      - Potential solution: secBERT, ML for Text Classification
+   - Calculate the new score relative to its original CVSS score
+     - Potential solution: secBERT, ML for Text Classification
 
 5. Validation
-
-
-    - TBD, consult with proff
+   - TBD, consult with professor
