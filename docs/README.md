@@ -1,6 +1,6 @@
 # Context-aware vulnerability classification — CTI knowledge graph
 
-Stage 2, step 1 of `ref_papers/outline_n_ideas.md`: the Cyber Threat Intelligence knowledge graph,
+Stage 2, step 1 of `outline_n_ideas.md`: the Cyber Threat Intelligence knowledge graph,
 built the way Nagaty et al. (ICCA 2025) describe, from CVE (cvelistV5 + NVD), CWE, CAPEC and
 MITRE ATT&CK. Schema and edge directions: [schema.md](schema.md).
 
