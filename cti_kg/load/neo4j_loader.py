@@ -15,7 +15,7 @@ SCHEMA_CYPHER = Path(__file__).with_name("schema.cypher")
 def _batches(path: Path):
     """Create a generator that yields batches of JSON objects from a JSONL file."""
     batch = []
-    with open(path) as fh:
+    with open(path, encoding="utf-8") as fh:
         for line in fh:
             batch.append(json.loads(line))
             if len(batch) >= BATCH:
@@ -26,7 +26,7 @@ def _batches(path: Path):
 
 
 def _count_lines(path: Path) -> int:
-    with open(path) as fh:
+    with open(path, encoding="utf-8") as fh:
         return sum(1 for _ in fh)
 
 
@@ -36,7 +36,7 @@ def driver():
 
 def apply_schema(session) -> None:
     """Read Cypher schema from schema.cypher and apply it to the database. This is idempotent."""
-    for stmt in SCHEMA_CYPHER.read_text().split(";"):
+    for stmt in SCHEMA_CYPHER.read_text(encoding="utf-8").split(";"):
         lines = [ln for ln in stmt.splitlines() if not ln.strip().startswith("//")]
         if "".join(lines).strip():
             session.run("\n".join(lines))

@@ -15,6 +15,7 @@ from lxml import etree
 from ..graph import Graph
 from .xmlutil import local, text, text_hash
 
+# Default namespace of CWE <= 4.x. CWE 5.0 moved to cwe-8, so parse_cwe reads it from the file.
 NS = {"c": "http://cwe.mitre.org/cwe-7"}
 PLATFORM_KINDS = {"Language": "language", "Technology": "technology",
                   "Operating_System": "operating_system", "Architecture": "architecture"}
@@ -30,10 +31,14 @@ def find_cwe_xml(raw_dir: Path) -> Path:
 def parse_cwe(path: Path, g: Graph) -> str:
     """Populate g from the CWE XML. Returns the catalog version (e.g. '4.20')."""
     root = etree.parse(str(path)).getroot()
+    NS = {"c": root.nsmap.get(None, "http://cwe.mitre.org/cwe-7")}   # cwe-7 (4.x) or cwe-8 (5.0+)
     version = root.get("Version")
     src = f"cwe-{version}"
 
-    for c in root.iterfind("c:Categories/c:Category", NS):
+    # CWE 5.0 renamed Categories/Category to Groupings/Grouping (same IDs, same Summary).
+    categories = (list(root.iterfind("c:Categories/c:Category", NS))
+                  + list(root.iterfind("c:Groupings/c:Grouping", NS)))
+    for c in categories:
         g.add_node("Weakness", f"CWE-{c.get('ID')}", src, name=c.get("Name"), abstraction="Category",
                    status=c.get("Status"), description=text(c.find("c:Summary", NS)))
 

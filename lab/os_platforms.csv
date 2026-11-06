@@ -1,0 +1,10 @@
+# OS -> Platform node of the CTI graph (ATT&CK / CWE vocabulary), for Asset -[RUNS_ON]-> Platform.
+# os_prefix is matched case-insensitively against the start of the `os` column in assets.csv.
+# platform must be an existing Platform name (check with: MATCH (p:Platform) RETURN p.name).
+os_prefix,platform
+Debian,Linux
+Ubuntu,Linux
+CentOS,Linux
+Red Hat,Linux
+Windows,Windows
+macOS,macOS

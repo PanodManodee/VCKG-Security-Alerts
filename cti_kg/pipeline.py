@@ -76,7 +76,7 @@ def build(since_year: int) -> dict:
 
     # CPE nodes repeat across year shards; count distinct ones.
     nodes["CPE"] = len({json.loads(line)["key"] for d in shard_dirs()
-                        for f in (d / "nodes").glob("CPE.jsonl") for line in open(f)})
+                        for f in (d / "nodes").glob("CPE.jsonl") for line in open(f, encoding="utf-8")})
 
     _write_merges(merges)
     report = {
@@ -91,13 +91,13 @@ def build(since_year: int) -> dict:
         "nodes": dict(nodes.most_common()),
         "edges": dict(edges.most_common()),
     }
-    (config.PROCESSED / "build_report.json").write_text(json.dumps(report, indent=2))
+    (config.PROCESSED / "build_report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
     return report
 
 
 def _write_merges(merges) -> None:
     path = config.PROCESSED / "alignment_report.csv"
-    with open(path, "w", newline="") as fh:
+    with open(path, "w", newline="", encoding="utf-8") as fh:
         w = csv.DictWriter(fh, fieldnames=["step", "label", "from_key", "to_key", "score", "method"])
         w.writeheader()
         for m in merges:

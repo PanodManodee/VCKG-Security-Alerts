@@ -75,7 +75,7 @@ def load_aliases() -> dict[str, str]:
     path = config.OVERRIDES / "platform_aliases.csv"
     if not path.exists():
         return {}
-    with open(path) as fh:
+    with open(path, encoding="utf-8") as fh:
         return {
             r["alias"].strip(): r["canonical"].strip()
             for r in csv.DictReader(_skip_comments(fh))

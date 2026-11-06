@@ -1,0 +1,15 @@
+# One row per listening service and the software behind it, as built in lab_env/ (see each hosts/*/Dockerfile).
+# version: the real version (check with nmap -sV from kali, or Wazuh syscollector). "unknown" rows are loaded but not linked.
+# cpe_vendor / cpe_product: the pair used in the CTI graph. Find it with
+#     python -m asset_kg.find_cpe <name>        then        python -m asset_kg.find_cpe --versions <vendor> <product>
+# Note: NVD files nginx CVEs from 2024 on under f5:nginx_open_source, not f5:nginx.
+asset,service,port,protocol,software,version,cpe_vendor,cpe_product
+Nginx,http,80,tcp,nginx,1.25.3,f5,nginx_open_source
+Nginx,https,443,tcp,nginx,1.25.3,f5,nginx_open_source
+Web,http,80,tcp,apache httpd,2.4.58,apache,http_server
+API,http,3000,tcp,node.js,21.6.1,nodejs,node.js
+Jenkins,http,8080,tcp,jenkins,2.441,jenkins,jenkins
+PostgreSQL,postgresql,5432,tcp,postgresql,15.5,postgresql,postgresql
+Files-SMB,smb,445,tcp,samba,4.17.12,samba,samba
+Admin-PC,ssh,22,tcp,openssh,8.9p1,openbsd,openssh
+Dep-PC,ssh,22,tcp,openssh,8.9p1,openbsd,openssh

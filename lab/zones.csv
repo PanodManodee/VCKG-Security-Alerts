@@ -1,0 +1,7 @@
+# Network zones. "Internet" is the outside world (Table I in the paper uses it to decide MAV).
+name
+Internet
+DMZ
+APP
+DATA
+Office

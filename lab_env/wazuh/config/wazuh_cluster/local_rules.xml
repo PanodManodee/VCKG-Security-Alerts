@@ -1,0 +1,28 @@
+<!--
+  Lab rules (mounted into the manager as etc/rules/local_rules.xml). Ids 100100-100199.
+  The stock ruleset has no rule for Samba auth audit lines: they fell to rule 1002 (level 2, no alert).
+-->
+<group name="local,samba,">
+
+  <rule id="100110" level="5">
+    <decoded_as>smbd</decoded_as>
+    <field name="smb.status" type="pcre2">^NT_STATUS_(WRONG_PASSWORD|NO_SUCH_USER|LOGON_FAILURE|ACCOUNT_LOCKED_OUT)$</field>
+    <description>Samba: authentication failed for user $(dstuser) ($(smb.status)).</description>
+    <mitre>
+      <id>T1110</id>
+    </mitre>
+    <group>authentication_failed,pci_dss_10.2.4,pci_dss_10.2.5,</group>
+  </rule>
+
+  <rule id="100111" level="3">
+    <decoded_as>smbd</decoded_as>
+    <field name="smb.status" type="pcre2">^NT_STATUS_OK$</field>
+    <description>Samba: user $(dstuser) authenticated.</description>
+    <mitre>
+      <id>T1078</id>
+      <id>T1021.002</id>
+    </mitre>
+    <group>authentication_success,pci_dss_10.2.5,</group>
+  </rule>
+
+</group>

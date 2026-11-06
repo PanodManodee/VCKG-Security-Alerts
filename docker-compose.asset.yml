@@ -1,0 +1,16 @@
+# Adds the asset-graph loader next to the Neo4j service of docker-compose.yml.
+# From the repo root:
+#   docker compose -f docker-compose.yml -f docker-compose.asset.yml up --build asset-loader
+services:
+  asset-loader:
+    build:
+      context: .
+      dockerfile: asset_kg/Dockerfile
+    env_file: .env                     # NEO4J_USER / NEO4J_PASSWORD (same file cti_kg uses)
+    environment:
+      NEO4J_URI: bolt://neo4j:7687     # "neo4j" = service name in docker-compose.yml
+    volumes:
+      - ./lab:/app/lab:ro
+    depends_on:
+      - neo4j
+    restart: "no"

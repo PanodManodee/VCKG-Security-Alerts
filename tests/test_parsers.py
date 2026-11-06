@@ -73,8 +73,8 @@ def test_attack_mitigation_and_revoked_map():
 
 def test_cve_merge_cvelist_and_nvd():
     g = Graph()
-    rec = json.loads((FX / "cvelist_CVE-2024-21732.json").read_text())
-    nvd = json.loads((FX / "nvd_CVE-2024-21732.json").read_text())
+    rec = json.loads((FX / "cvelist_CVE-2024-21732.json").read_text(encoding="utf-8"))
+    nvd = json.loads((FX / "nvd_CVE-2024-21732.json").read_text(encoding="utf-8"))
     add_cve(g, "CVE-2024-21732", rec, nvd)
     v = g.nodes[("Vulnerability", "CVE-2024-21732")]
     assert v["sources"] == {"cvelistV5", "nvd"}
