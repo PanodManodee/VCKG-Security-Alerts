@@ -13,7 +13,7 @@ from .. import config
 def read_manifest() -> dict:
     """Read the manifest file if it exists, returning a dictionary of its contents. If the manifest does not exist, return an empty dictionary."""
     if config.MANIFEST.exists():
-        return json.loads(config.MANIFEST.read_text())
+        return json.loads(config.MANIFEST.read_text(encoding="utf-8"))
     return {}
 
 
@@ -22,7 +22,7 @@ def update_manifest(name: str, **info) -> None:
     m = read_manifest()
     m[name] = {**m.get(name, {}), **info}
     config.MANIFEST.parent.mkdir(parents=True, exist_ok=True)
-    config.MANIFEST.write_text(json.dumps(m, indent=2, sort_keys=True))
+    config.MANIFEST.write_text(json.dumps(m, indent=2, sort_keys=True), encoding="utf-8")
 
 
 def fetch(url: str, dest: Path, name: str, force: bool = False) -> bool:

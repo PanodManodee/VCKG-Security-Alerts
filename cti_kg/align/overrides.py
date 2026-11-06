@@ -22,7 +22,7 @@ def _rows(name: str) -> list[dict]:
     path = config.OVERRIDES / name
     if not path.exists():
         return []
-    with open(path) as fh:
+    with open(path, encoding="utf-8") as fh:
         return [{k: (v or "").strip() for k, v in r.items()} for r in csv.DictReader(_skip_comments(fh))]
 
 

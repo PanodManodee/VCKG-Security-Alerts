@@ -113,12 +113,12 @@ class Graph:
 
 
 def _write_jsonl(path: Path, rows: list) -> None:
-    with open(path, "w") as fh:
+    with open(path, "w", encoding="utf-8") as fh:
         for r in rows:
             fh.write(json.dumps(r, ensure_ascii=False) + "\n")
 
 
 def _read_jsonl(path: Path):
-    with open(path) as fh:
+    with open(path, encoding="utf-8") as fh:
         for line in fh:
             yield json.loads(line)

@@ -1,0 +1,26 @@
+<!--
+  Lab decoders (mounted into the manager as etc/decoders/local_decoder.xml).
+
+  Samba auth audit line (smb.conf: log level = 1 auth_audit:3), e.g.
+    smbd[1452]:   Auth: [SMB2,(null)] user [LAB]\[alice] at [Thu, 06 Nov 2026 13:48:18 UTC] with [NTLMv2]
+    status [NT_STATUS_WRONG_PASSWORD] workstation [ADMIN-PC] remote host [ipv4:10.10.40.41:50340] ...
+  The stock smbd decoders do not read this line, so login events had no user, status or source IP.
+-->
+<decoder name="smbd-auth-audit">
+  <parent>smbd</parent>
+  <prematch type="pcre2">Auth: \[</prematch>
+  <regex type="pcre2">user \[[^\]]*\]\\\[([^\]]+)\] at .* status \[(\w+)\] workstation .* remote host \[ipv4:([\d.]+):</regex>
+  <order>dstuser, smb.status, srcip</order>
+</decoder>
+
+<!--
+  PostgreSQL log with log_line_prefix '[%m] %h:%d ' (lab_env/hosts/postgresql/Dockerfile), e.g.
+    [2026-11-06 13:42:00.119 UTC] 10.10.40.42:postgres FATAL:  password authentication failed for user "postgres"
+  The stock postgresql_log decoder skips the "host:db" token, so alerts had no source IP.
+  This child keeps `status` (LOG / FATAL / ...) as the stock decoder sets it, so the stock rules still match.
+-->
+<decoder name="postgresql_log-client">
+  <parent>postgresql_log</parent>
+  <regex type="pcre2" offset="after_parent">^([\d.]+):(\S*) (\w+): </regex>
+  <order>srcip, postgresql.database, status</order>
+</decoder>

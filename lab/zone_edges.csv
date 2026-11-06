@@ -1,0 +1,7 @@
+# ALLOWED_TO_REACH: traffic the firewall lets through from one zone to another.
+# Must match lab_env/firewall/rules.sh (zone-level, all ports; replies are allowed by conntrack).
+src,dst
+Internet,DMZ
+DMZ,APP
+APP,DATA
+Office,DATA

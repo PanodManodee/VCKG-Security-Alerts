@@ -5,3 +5,7 @@ __pycache__/
 data/
 neo4j_data/
 .pytest_cache/
+
+# lab environment (lab_env/)
+lab_env/.env
+lab_env/wazuh/config/wazuh_indexer_ssl_certs/

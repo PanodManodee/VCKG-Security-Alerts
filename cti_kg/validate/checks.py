@@ -61,7 +61,7 @@ def _keys(g: Graph, label) -> set:
 
 def _capec_stix():
     path = config.REF_DIR / "stix-capec.json"
-    objs = json.loads(path.read_text())["objects"]
+    objs = json.loads(path.read_text(encoding="utf-8"))["objects"]
     return [o for o in objs if o["type"] == "attack-pattern"
             and not o.get("revoked") and o.get("x_capec_status") not in ("Deprecated", "Obsolete")]
 
@@ -143,7 +143,7 @@ def check_exploited_by(g: Graph, kg: set, since: int, most_specific: bool = Fals
         path = config.REF_DIR / f"CVE2CAPEC-{y}.jsonl.gz"
         if not path.exists():
             continue
-        with gzip.open(path, "rt") as fh:
+        with gzip.open(path, "rt", encoding="utf-8") as fh:
             for line in fh:
                 for cve, info in json.loads(line).items():
                     cwes = {f"CWE-{c}" for c in info.get("CWE", [])}
@@ -188,7 +188,7 @@ def run(since: int) -> str:
             "from the paper. CVE2CAPEC expands each CVE's CWE to its ancestors, which lowers recall.", ""]
     report = "\n".join(out)
     config.REPORTS.mkdir(parents=True, exist_ok=True)
-    (config.REPORTS / "validation.md").write_text(report)
+    (config.REPORTS / "validation.md").write_text(report, encoding="utf-8")
     return report
 
 

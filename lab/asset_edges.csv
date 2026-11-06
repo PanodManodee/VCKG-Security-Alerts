@@ -1,0 +1,8 @@
+# CONNECTS_TO: src talks to dst. Taken from each host's role in lab_env/.
+# Nginx -> Web is real (nginx proxies to 10.10.10.12); the others are the intended application flows.
+src,dst
+Nginx,Web
+Web,API
+Jenkins,API
+API,PostgreSQL
+Admin-PC,Files-SMB

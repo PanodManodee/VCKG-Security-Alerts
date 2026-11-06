@@ -1,0 +1,5 @@
+# Wazuh rule.id -> ATT&CK technique, for rules whose alerts carry no rule.mitre.id (PLAN.md section 4:
+# only about a fifth of Wazuh rules have one). Used by alert_kg only when rule.mitre.id is empty.
+# Add a row only after reading the rule (ruleset/rules/*.xml on the manager) and the technique page.
+# One row per technique; several rows per rule are allowed. `note` records why.
+rule_id,technique,note

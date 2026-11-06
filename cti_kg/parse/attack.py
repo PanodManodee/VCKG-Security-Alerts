@@ -21,7 +21,7 @@ def _attack_id(obj) -> str | None:
 
 def revoked_technique_map(path: Path) -> dict[str, str]:
     """Revoked technique id -> id of the technique that replaced it (follows chains)."""
-    objects = json.loads(path.read_text())["objects"]
+    objects = json.loads(path.read_text(encoding="utf-8"))["objects"]
     ids = {o["id"]: _attack_id(o) for o in objects if o["type"] == "attack-pattern"}
     nxt = {o["source_ref"]: o["target_ref"] for o in objects
            if o["type"] == "relationship" and o.get("relationship_type") == "revoked-by"
@@ -40,7 +40,7 @@ def revoked_technique_map(path: Path) -> dict[str, str]:
 def parse_attack(path: Path, g: Graph) -> str:
     """Populate g from enterprise-attack.json. Returns the ATT&CK release version."""
     data = MitreAttackData(str(path))
-    collection = next((o for o in json.loads(path.read_text())["objects"]
+    collection = next((o for o in json.loads(path.read_text(encoding="utf-8"))["objects"]
                        if o["type"] == "x-mitre-collection"), {})
     version = collection.get("x_mitre_version", "unknown")
     src = f"attack-{version}"

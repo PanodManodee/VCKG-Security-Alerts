@@ -47,7 +47,7 @@ def iter_cvelist_year(year: int):
     if not year_dir.exists():
         return
     for f in year_dir.glob("*/CVE-*.json"):
-        with open(f) as fh:
+        with open(f, encoding="utf-8") as fh:
             yield json.load(fh)
 
 

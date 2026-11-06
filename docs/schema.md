@@ -60,3 +60,70 @@ Simplification: NVD configurations that combine an application CPE with a non-vu
 
 `overrides/*.csv` are applied after automatic parsing and alignment; see the header of each file.
 Automatic merges are listed in `data/processed/alignment_report.csv` for review.
+
+## Asset graph and bridges (`asset_kg`)
+
+The asset graph lives in the same Neo4j database. It is loaded from `lab/*.csv`, which describe the
+Docker lab in `lab_env/`. Every node and edge it writes has `sources = ['asset_kg']`.
+It never creates or edits CTI nodes: `CPE`, `Vulnerability` and `Platform` are only matched.
+
+| Node | Key | Example |
+|---|---|---|
+| Zone | name | DMZ, Internet |
+| Asset | hostname | Jenkins (`ip`, `os`, `role`, `cr`/`ir`/`ar`, `internet_exposed`) |
+| Service | id | Jenkins:8080/tcp |
+| Software | id | jenkins 2.441 (`cpe_vendor`, `cpe_product`) |
+
+| Edge | Direction | Origin |
+|---|---|---|
+| IN_ZONE | Asset → Zone | assets.csv |
+| ALLOWED_TO_REACH | Zone → Zone | zone_edges.csv (= firewall rules) |
+| CONNECTS_TO | Asset → Asset | asset_edges.csv (application flows) |
+| RUNS | Asset → Service | services.csv |
+| IMPLEMENTED_BY | Service → Software | services.csv |
+| **IDENTIFIED_AS** | Software → CPE | `link`: exact vendor:product, version inside the CPE range |
+| **HAS_VULNERABILITY** | Software → Vulnerability | `link`: CVEs of the matched CPE edges |
+| **RUNS_ON** | Asset → Platform | `link`: OS family via `lab/os_platforms.csv` (Debian → Linux) |
+| **CAN_REACH** | Asset → Service, Zone → Service | `link`: same zone, or zone ALLOWED_TO_REACH zone (`via` = `same-zone` / `firewall`); Zone sources are zones without assets (the Internet) |
+
+The bold edges are the bridges. `link` rebuilds them every time it runs. Through them, an alert can reach:
+
+```
+Asset ─RUNS→ Service ─IMPLEMENTED_BY→ Software ─HAS_VULNERABILITY→ Vulnerability ←EXPLOITED_BY─ Weakness ─CAUSES_WEAKNESS→ AttackPattern ─USES_TECHNIQUE→ Technique
+Asset ─RUNS_ON→ Platform ←AFFECTS─ Technique                      (alerts that carry only an ATT&CK id)
+Zone/Asset ─CAN_REACH→ Service ←RUNS─ Asset                       (attack paths, blast radius)
+```
+
+Example queries:
+
+```cypher
+// technique from an alert -> hosts it can run on
+MATCH (t:Technique {attack_id: 'T1059.004'})-[:AFFECTS]->(:Platform)<-[:RUNS_ON]-(a:Asset)
+RETURN a.hostname
+
+// attack paths from the Internet to the database through reachable services
+MATCH p = (:Zone {name: 'Internet'})-[:CAN_REACH]->(:Service)<-[:RUNS]-(:Asset)
+          (()-[:CAN_REACH]->(:Service)<-[:RUNS]-(:Asset)){0,3}
+WHERE last(nodes(p)).hostname = 'PostgreSQL'
+RETURN p LIMIT 25
+
+// the same paths, keeping only hops onto services with a known CVE
+MATCH p = (:Zone {name: 'Internet'})-[:CAN_REACH]->(s1:Service)<-[:RUNS]-(:Asset)
+          (()-[:CAN_REACH]->(s:Service)<-[:RUNS]-(:Asset)
+             WHERE EXISTS { (s)-[:IMPLEMENTED_BY]->()-[:HAS_VULNERABILITY]->() }){0,3}
+WHERE EXISTS { (s1)-[:IMPLEMENTED_BY]->()-[:HAS_VULNERABILITY]->() }
+  AND last(nodes(p)).hostname = 'PostgreSQL'
+RETURN p LIMIT 25
+```
+
+## Alerts (`alert_kg`)
+
+| Edge | Direction | Origin |
+|---|---|---|
+| TARGETS | Alert → Asset | `agent.name` (case-insensitive), else `agent.ip` |
+| INDICATES | Alert → Technique | `rule.mitre.id` (revoked ids remapped), else `overrides/wazuh_rule_techniques.csv` (`via` on the edge) |
+| MENTIONS | Alert → Vulnerability | `data.vulnerability.cve` |
+| FROM | Alert → Asset, Alert → Zone | `data.srcip` = a lab host's IP, otherwise the Internet zone (loopback ignored) |
+
+`Alert` key: `alert_id` (indexer `_id`). It also stores `rule_id`, `rule_level`, `description`, `groups`,
+`techniques`, `techniques_original`, `cves`, `srcip`, `dstip`, `dstport`, `timestamp` and `full_log`.
