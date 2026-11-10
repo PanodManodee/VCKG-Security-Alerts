@@ -45,6 +45,10 @@ ORDER BY id
 """
 
 # Technique family: the technique, its parent, and its sub-techniques (CAPEC often maps to the parent).
+# Only specific CWEs (Base / Variant / Compound) count as a link: Pillar and Class CWEs are so abstract that
+# they join unrelated things, e.g. "Wazuh agent stopped" (T1685) -> CAPEC-578 Disable Security Software ->
+# CWE-284 Improper Access Control (a Pillar) -> every access-control CVE on the host.
+SPECIFIC_CWE = ["Base", "Variant", "Compound"]
 Q_VULNS = """
 MATCH (al:Alert {alert_id: $id})-[:TARGETS]->(a:Asset)-[:RUNS]->(svc:Service)
       -[:IMPLEMENTED_BY]->(sw:Software)-[:HAS_VULNERABILITY]->(v:Vulnerability)
@@ -53,9 +57,10 @@ RETURN v.cve_id AS cve, v.cvss3_score AS cvss3, v.cvss3_severity AS severity, v.
        v.kev_date_added IS NOT NULL AS kev, v.ssvc_exploitation AS exploitation, services, software,
        EXISTS { (al)-[:MENTIONS]->(v) } AS named_in_alert,
        [(al)-[:INDICATES]->(t:Technique)
-        WHERE EXISTS { (v)<-[:EXPLOITED_BY]-(:Weakness)-[:CAUSES_WEAKNESS]->(:AttackPattern)
+        WHERE EXISTS { (v)<-[:EXPLOITED_BY]-(w:Weakness)-[:CAUSES_WEAKNESS]->(:AttackPattern)
                        -[:USES_TECHNIQUE]->(u:Technique)
-                       WHERE u = t OR (t)-[:SUBTECHNIQUE_OF]->(u) OR (u)-[:SUBTECHNIQUE_OF]->(t) }
+                       WHERE w.abstraction IN $specific
+                         AND (u = t OR (t)-[:SUBTECHNIQUE_OF]->(u) OR (u)-[:SUBTECHNIQUE_OF]->(t)) }
         | t.attack_id] AS via_techniques
 """
 
@@ -110,7 +115,7 @@ def build_context(session, alert_id: str, other_vulns: int = 10) -> dict | None:
         t["tactics"] = sorted(set(t["tactics"]))
     start = Q_PATH_START_SOURCE if head["source"] else Q_PATH_START_OUTSIDE
     paths = [r["hops"] for r in session.run(start + "\n" + Q_PATHS, id=alert_id)]
-    vulns = _sort_vulns(session.run(Q_VULNS, id=alert_id).data())
+    vulns = _sort_vulns(session.run(Q_VULNS, id=alert_id, specific=SPECIFIC_CWE).data())
     related = [v for v in vulns if v["named_in_alert"] or v["via_techniques"]]
     others = [v for v in vulns if not (v["named_in_alert"] or v["via_techniques"])]
     return {
@@ -144,6 +149,9 @@ def context(alert_id: str | None = None, min_level: int = 3, include_all: bool =
             wait: int = 60, quiet: bool = False) -> list[dict]:
     """Write data/alerts/context/<id>.json for one alert, or for every alert with a technique or CVE."""
     config.CONTEXT_DIR.mkdir(parents=True, exist_ok=True)
+    if not alert_id:      # a full run replaces the folder: no files left from alerts no longer in the graph
+        for old in config.CONTEXT_DIR.glob("*.json"):
+            old.unlink()
     out = []
     with driver(wait) as drv, drv.session() as session:
         ids = [alert_id] if alert_id else [r["id"] for r in session.run(

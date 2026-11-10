@@ -1,0 +1,8 @@
+# Asset OS (the `os` column of assets.csv, exact) -> OSV ecosystem with that release's security data.
+# Used for services.csv rows with a distro_package (see asset_kg/osv.py). Ecosystem names as in OSV:
+# Debian:<major>, Ubuntu:<release>[:LTS].
+os,osv_ecosystem
+Debian 12,Debian:12
+Debian 13,Debian:13
+Ubuntu 22.04,Ubuntu:22.04:LTS
+Ubuntu 24.04,Ubuntu:24.04:LTS

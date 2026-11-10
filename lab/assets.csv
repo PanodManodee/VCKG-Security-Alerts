@@ -1,5 +1,5 @@
 # One row per host. cr / ir / ar = CVSS v3.1 security requirements: L, M or H (all three are mandatory).
-# TODO: confirm cr/ir/ar with the team and keep the reason for each value.
+# cr/ir/ar values confirmed as written (2026-11-10).
 # ip / os: the Docker lab in lab_env/ (lab_env/docker-compose.yml). Alerts are mapped to assets by IP.
 hostname,role,zone,ip,os,cr,ir,ar
 Nginx,reverse proxy,DMZ,10.10.10.11,Debian 12,M,M,H

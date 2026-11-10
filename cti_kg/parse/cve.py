@@ -137,29 +137,34 @@ def _cwes(nvd, cna, adps) -> dict[str, set]:
     return out
 
 
+def version_interval(m: dict) -> str:
+    """NVD cpeMatch bounds -> interval string: '[12.0,12.20)', '(,4.4)', '[8.6,9.8]', '(,)' = all.
+
+    '[' / ']' include the bound, '(' / ')' exclude it, an empty side is unbounded.
+    Parsed back by asset_kg.versions.parse_interval.
+    """
+    si, se = m.get("versionStartIncluding"), m.get("versionStartExcluding")
+    ei, ee = m.get("versionEndIncluding"), m.get("versionEndExcluding")
+    return f"{'[' if si else '('}{si or se or ''},{ei or ee or ''}{']' if ei else ')'}"
+
+
 def _cpe_matches(nvd, cna) -> list[tuple[str, dict, str]]:
-    """(cpe23, edge props, source) for every vulnerable CPE."""
+    """(cpe23, edge props, source) for every vulnerable CPE.
+
+    One CVE often lists the same wildcard CPE several times with different version ranges
+    (e.g. PostgreSQL [12.0,12.20) ... [16.0,16.4)). Each range goes into the set
+    `version_ranges`; Graph.add_edge unions the sets, so no range is lost.
+    """
     out = []
     for conf in (nvd or {}).get("configurations", []):
         for node in conf.get("nodes", []):
             for m in node.get("cpeMatch", []):
                 if m.get("vulnerable"):
-                    out.append(
-                        (
-                            m["criteria"],
-                            {
-                                "version_start_including": m.get(
-                                    "versionStartIncluding"
-                                ),
-                                "version_start_excluding": m.get(
-                                    "versionStartExcluding"
-                                ),
-                                "version_end_including": m.get("versionEndIncluding"),
-                                "version_end_excluding": m.get("versionEndExcluding"),
-                            },
-                            "nvd",
-                        )
-                    )
+                    bounded = any(m.get(k) for k in ("versionStartIncluding", "versionStartExcluding",
+                                                     "versionEndIncluding", "versionEndExcluding"))
+                    wildcard = parse_cpe(m["criteria"]).get("version") in (None, "", "*")
+                    props = {"version_ranges": {version_interval(m)}} if bounded or wildcard else {}
+                    out.append((m["criteria"], props, "nvd"))
     if not out and cna:
         for a in cna.get("affected", []) or []:
             for cpe in a.get("cpes", []) or []:

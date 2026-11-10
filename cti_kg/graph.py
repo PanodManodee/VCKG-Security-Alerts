@@ -46,7 +46,11 @@ class Graph:
         edge = self.edges.setdefault((etype, src_label, src, dst_label, dst), {})
         edge["sources"] = set(edge.get("sources", ())) | {source}
         for k, v in props.items():
-            if v not in (None, "", []):
+            if isinstance(v, (set, frozenset)):
+                # Set-valued props accumulate: e.g. NVD gives one CPE several version ranges for
+                # the same CVE, and each must survive (they used to overwrite each other).
+                edge[k] = set(edge.get(k, ())) | set(v)
+            elif v not in (None, "", []):
                 edge[k] = v
 
     def has_node(self, label: str, key: str) -> bool:

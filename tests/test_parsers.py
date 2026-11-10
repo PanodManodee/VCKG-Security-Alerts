@@ -83,8 +83,27 @@ def test_cve_merge_cvelist_and_nvd():
     edge = g.edges[("EXPLOITED_BY", "Weakness", "CWE-79", "Vulnerability", "CVE-2024-21732")]
     assert {"nvd", "cisa-adp"} <= edge["sources"]
     cpe = "cpe:2.3:a:flycms_project:flycms:*:*:*:*:*:*:*:*"
-    assert g.edges[("VULNERABLE_TO", "CPE", cpe, "Vulnerability", "CVE-2024-21732")]["version_end_including"] == "2019-12-20"
+    assert g.edges[("VULNERABLE_TO", "CPE", cpe, "Vulnerability", "CVE-2024-21732")]["version_ranges"] == {"(,2019-12-20]"}
     assert g.nodes[("CPE", cpe)]["vendor"] == "flycms_project"
+
+
+def test_several_ranges_for_one_cpe_are_all_kept():
+    """NVD lists the same wildcard CPE once per affected branch (e.g. CVE-2024-7348, PostgreSQL 12-16).
+    They used to collapse into one edge whose bounds overwrote each other."""
+    cpe = "cpe:2.3:a:postgresql:postgresql:*:*:*:*:*:*:*:*"
+    nvd = {"id": "CVE-2024-7348", "configurations": [{"nodes": [{"cpeMatch": [
+        {"vulnerable": True, "criteria": cpe, "versionStartIncluding": "12.0", "versionEndExcluding": "12.20"},
+        {"vulnerable": True, "criteria": cpe, "versionStartIncluding": "15.0", "versionEndExcluding": "15.8"},
+        {"vulnerable": True, "criteria": cpe, "versionStartIncluding": "16.0", "versionEndExcluding": "16.4"},
+        {"vulnerable": True, "criteria": "cpe:2.3:a:postgresql:postgresql:11.0:*:*:*:*:*:*:*"},
+    ]}]}]}
+    g = Graph()
+    add_cve(g, "CVE-2024-7348", None, nvd)
+    edge = g.edges[("VULNERABLE_TO", "CPE", cpe, "Vulnerability", "CVE-2024-7348")]
+    assert edge["version_ranges"] == {"[12.0,12.20)", "[15.0,15.8)", "[16.0,16.4)"}
+    concrete = g.edges[("VULNERABLE_TO", "CPE", "cpe:2.3:a:postgresql:postgresql:11.0:*:*:*:*:*:*:*",
+                        "Vulnerability", "CVE-2024-7348")]
+    assert "version_ranges" not in concrete      # a concrete CPE version needs no range
 
 
 def test_parse_cpe_escaped_colon():

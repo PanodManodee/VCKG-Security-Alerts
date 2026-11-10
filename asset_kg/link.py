@@ -12,8 +12,13 @@ Step 1, for every Software node with a cpe_vendor / cpe_product and a real versi
 The range check is done here (not in Cypher) because Neo4j cannot order versions, and because
 wildcard CPE nodes (version '*') keep their bounds on the VULNERABLE_TO edge.
 Matching only vendor:product is exact by design: no fuzzy matching of names happens here.
+
+Distro packages (services.csv rows with distro_package / package_version) still get IDENTIFIED_AS
+from NVD, but their HAS_VULNERABILITY edges come from the distribution's security data (osv.py),
+because NVD's upstream ranges ignore backported fixes. Every HAS_VULNERABILITY edge records where
+it came from in `via`: 'nvd' or 'osv:<ecosystem>' (with `fixed_version`, empty when no fix exists).
 """
-from . import config
+from . import config, osv
 from .db import driver
 from .loader import read_csv
 from .versions import cpe_applies
@@ -22,7 +27,9 @@ SRC = [config.SOURCE]
 
 Q_SOFTWARE = """
 MATCH (sw:Software)
-RETURN sw.id AS id, sw.version AS version, sw.cpe_vendor AS vendor, sw.cpe_product AS product
+RETURN sw.id AS id, sw.version AS version, sw.cpe_vendor AS vendor, sw.cpe_product AS product,
+       sw.distro_package AS distro_package, sw.package_version AS package_version,
+       [(sw)<-[:IMPLEMENTED_BY]-(:Service)<-[:RUNS]-(a:Asset) | a.os] AS os_names
 ORDER BY id
 """
 
@@ -41,10 +48,11 @@ SET e.sources = $src
 """
 
 Q_VULN = """
-UNWIND $cves AS cve
-MATCH (sw:Software {id: $id}), (v:Vulnerability {cve_id: cve})
+UNWIND $rows AS r
+MATCH (sw:Software {id: $id}), (v:Vulnerability {cve_id: r.cve})
 MERGE (sw)-[e:HAS_VULNERABILITY]->(v)
-SET e.sources = $src
+SET e.sources = $src, e.via = r.via, e.fixed_version = r.fixed
+RETURN count(*) AS n
 """
 
 
@@ -87,32 +95,55 @@ RETURN z.name AS zone, collect(svc.id) AS services
 """
 
 
+def nvd_matches(session, sw: dict) -> tuple[list[str], list[str], str | None]:
+    """(CPEs, CVEs) whose NVD range covers the upstream version, or a reason why none were looked up."""
+    if not sw["vendor"] or not sw["product"]:
+        return [], [], "no cpe_vendor / cpe_product in lab/services.csv"
+    if sw["version"].lower() == "unknown":
+        return [], [], "version is 'unknown' (fill it in lab/services.csv)"
+    rows = session.run(Q_CANDIDATES, vendor=sw["vendor"], product=sw["product"]).data()
+    if not rows:
+        return [], [], (f"no CPE {sw['vendor']}:{sw['product']} in the CTI graph (check the pair with "
+                        "`python -m asset_kg.find_cpe`, or the CVE years loaded)")
+    hits = [r for r in rows if cpe_applies(sw["version"], r["cpe_version"], r["edge"])]
+    return sorted({r["cpe"] for r in hits}), sorted({r["cve"] for r in hits}), None
+
+
 def link_software(session) -> None:
     software = session.run(Q_SOFTWARE).data()
+    ecosystems = {r["os"]: r["osv_ecosystem"] for r in read_csv("os_ecosystems.csv")}
+    indexes: dict[str, dict] = {}
     print(f"software -> CPE / CVE ({len(software)} software nodes)")
     for sw in software:
         name = sw["id"]
-        if not sw["vendor"] or not sw["product"]:
-            print(f"  {name}: skipped, no cpe_vendor / cpe_product in lab/services.csv")
-            continue
-        if sw["version"].lower() == "unknown":
-            print(f"  {name}: skipped, version is 'unknown' (fill it in lab/services.csv)")
-            continue
-
-        rows = session.run(Q_CANDIDATES, vendor=sw["vendor"], product=sw["product"]).data()
-        if not rows:
-            print(f"  {name}: no CPE {sw['vendor']}:{sw['product']} in the CTI graph "
-                  "(check the pair with `python -m asset_kg.find_cpe`, or the CVE years loaded)")
-            continue
-        hits = [r for r in rows if cpe_applies(sw["version"], r["cpe_version"], r["edge"])]
-        cpes = sorted({r["cpe"] for r in hits})
-        cves = sorted({r["cve"] for r in hits})
-
+        cpes, nvd_cves, problem = nvd_matches(session, sw)
         session.run(Q_CLEAR, id=name).consume()          # re-linking replaces old results
         if cpes:
             session.run(Q_IDENTIFIED, id=name, cpes=cpes, src=SRC).consume()
-            session.run(Q_VULN, id=name, cves=cves, src=SRC).consume()
-        print(f"  {name}: {len(rows)} candidate edges -> {len(cpes)} CPE, {len(cves)} CVE")
+
+        if not sw["distro_package"]:
+            if problem:
+                print(f"  {name}: skipped, {problem}")
+                continue
+            rows = [{"cve": c, "via": "nvd", "fixed": None} for c in nvd_cves]
+            n = session.run(Q_VULN, id=name, rows=rows, src=SRC).single()["n"] if rows else 0
+            print(f"  {name}: NVD -> {len(cpes)} CPE, {n} CVE")
+            continue
+
+        # distro package: CVEs from the distribution's security data, per OS the software runs on
+        ecos = sorted({ecosystems[o] for o in sw["os_names"] if o in ecosystems})
+        missing = sorted({o for o in sw["os_names"] if o not in ecosystems})
+        if missing:
+            print(f"  {name}: no OSV ecosystem for OS {missing} (add it to lab/os_ecosystems.csv)")
+        rows: dict[str, dict] = {}
+        for eco in ecos:
+            if eco not in indexes:
+                indexes[eco] = osv.load_index(eco)
+            for cve, fixed in osv.affected_cves(indexes[eco], sw["distro_package"], sw["package_version"]).items():
+                rows.setdefault(cve, {"cve": cve, "via": f"osv:{eco}", "fixed": fixed})
+        n = session.run(Q_VULN, id=name, rows=list(rows.values()), src=SRC).single()["n"] if rows else 0
+        print(f"  {name}: OSV {', '.join(ecos) or '-'} ({sw['distro_package']} {sw['package_version']}) -> "
+              f"{len(rows)} CVE, {n} of them in the CTI graph  [NVD upstream ranges would give {len(nvd_cves)}]")
 
 
 def platform_for(os_name: str | None, mapping: list[dict]) -> str | None:

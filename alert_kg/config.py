@@ -11,6 +11,12 @@ WAZUH_INDEXER_PASSWORD = os.getenv("WAZUH_INDEXER_PASSWORD", "SecretPassword")
 #   WAZUH_INDEXER_CA=lab_env/wazuh/config/wazuh_indexer_ssl_certs/root-ca.pem
 WAZUH_INDEXER_CA = os.getenv("WAZUH_INDEXER_CA") or False
 ALERT_INDEX = os.getenv("WAZUH_ALERT_INDEX", "wazuh-alerts-*")
+VULN_INDEX = os.getenv("WAZUH_VULN_INDEX", "wazuh-states-vulnerabilities-*")   # Wazuh vulnerability detection
+
+# Wazuh server API (agent list, syscollector package inventory). Lab defaults from lab_env/docker-compose.yml.
+WAZUH_API_URL = os.getenv("WAZUH_API_URL", "https://localhost:55000")
+WAZUH_API_USER = os.getenv("WAZUH_API_USER", "wazuh-wui")
+WAZUH_API_PASSWORD = os.getenv("WAZUH_API_PASSWORD", "MyS3cr37P450r.*-")
 
 ALERTS = ROOT / "data" / "alerts"          # data/ is git-ignored
 RAW_ALERTS = ALERTS / "raw.jsonl"           # output of `fetch`
