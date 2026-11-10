@@ -51,7 +51,7 @@ Every node and edge has `sources` (e.g. `cwe-4.20`, `capec-3.9`, `attack-19.2`, 
 | DETECTED_BY | Weakness → DetectionMethod | CWE Detection_Methods (`effectiveness` on edge) |
 | AFFECTS | Weakness → Platform, Technique → Platform | CWE Applicable_Platforms (`prevalence` on edge), ATT&CK platforms |
 | IS_PARENT | parent → child (Weakness, AttackPattern) | CWE / CAPEC ChildOf |
-| VULNERABLE_TO | CPE → Vulnerability | NVD `vulnerable: true` cpeMatch; version ranges on the edge (`version_start_including`, `version_end_excluding`, …) — the paper's AFFECTS_VERSION |
+| VULNERABLE_TO | CPE → Vulnerability | NVD `vulnerable: true` cpeMatch. The paper's AFFECTS_VERSION is the list `version_ranges` on the edge, one interval per cpeMatch, e.g. `["[12.0,12.20)", "[15.0,15.8)"]`: `[`/`]` include a bound, `(`/`)` exclude it, an empty side is open, and `(,)` means all versions. It is set only for wildcard CPEs (`version = *`) or bounded matches; a CPE with a concrete version needs no range. |
 
 Simplification: NVD configurations that combine an application CPE with a non-vulnerable
 "running on" platform CPE (AND nodes) only keep the vulnerable CPE.
@@ -82,7 +82,7 @@ It never creates or edits CTI nodes: `CPE`, `Vulnerability` and `Platform` are o
 | RUNS | Asset → Service | services.csv |
 | IMPLEMENTED_BY | Service → Software | services.csv |
 | **IDENTIFIED_AS** | Software → CPE | `link`: exact vendor:product, version inside the CPE range |
-| **HAS_VULNERABILITY** | Software → Vulnerability | `link`: CVEs of the matched CPE edges |
+| **HAS_VULNERABILITY** | Software → Vulnerability | `link`. Upstream builds: CVEs whose NVD range covers the version (`via: nvd`). Distro packages (`distro_package` in services.csv): CVEs from the distribution's security data in OSV, so backported fixes count (`via: osv:Debian:12`, plus `fixed_version`, which is empty when no fix exists) |
 | **RUNS_ON** | Asset → Platform | `link`: OS family via `lab/os_platforms.csv` (Debian → Linux) |
 | **CAN_REACH** | Asset → Service, Zone → Service | `link`: same zone, or zone ALLOWED_TO_REACH zone (`via` = `same-zone` / `firewall`); Zone sources are zones without assets (the Internet) |
 
@@ -127,3 +127,4 @@ RETURN p LIMIT 25
 
 `Alert` key: `alert_id` (indexer `_id`). It also stores `rule_id`, `rule_level`, `description`, `groups`,
 `techniques`, `techniques_original`, `cves`, `srcip`, `dstip`, `dstport`, `timestamp` and `full_log`.
+After `python -m score_kg alerts`, it also has `event_score` / `event_band` / `event_basis` (how dangerous the event is, 0–10, and whether it is based on a linked CVE or the Wazuh level), `host_risk` / `host_band` / `host_top_cve` (how dangerous the host is) and `ssvc` (CISA SSVC decision). See [scoring.md](scoring.md).

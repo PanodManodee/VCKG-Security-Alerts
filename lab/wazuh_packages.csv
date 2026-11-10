@@ -1,0 +1,9 @@
+# Software (Software.name in the asset graph = `software` column of services.csv) -> the Debian/Ubuntu
+# package that Wazuh inventories for it, used by `python -m asset_kg wazuh-check`.
+# package is a regular expression on the package name; the first matching package is the one compared.
+# Software without a row (installed from source / tarball / WAR) is reported as "not inventoried by Wazuh".
+software,package
+nginx,^nginx$
+postgresql,^postgresql-\d+$
+samba,^samba$
+openssh,^openssh-server$

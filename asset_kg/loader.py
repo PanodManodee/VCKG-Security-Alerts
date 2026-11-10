@@ -39,9 +39,10 @@ MERGE (svc:Service {id: r.asset + ':' + toString(r.port) + '/' + r.protocol})
 SET svc.name = r.service, svc.port = r.port, svc.protocol = r.protocol, svc.sources = $src
 MERGE (a)-[e1:RUNS]->(svc)
 SET e1.sources = $src
-MERGE (sw:Software {id: r.software + ' ' + r.version})
+MERGE (sw:Software {id: r.software + ' ' + coalesce(r.package_version, r.version)})
 SET sw.name = r.software, sw.version = r.version,
-    sw.cpe_vendor = r.cpe_vendor, sw.cpe_product = r.cpe_product, sw.sources = $src
+    sw.cpe_vendor = r.cpe_vendor, sw.cpe_product = r.cpe_product,
+    sw.distro_package = r.distro_package, sw.package_version = r.package_version, sw.sources = $src
 MERGE (svc)-[e2:IMPLEMENTED_BY]->(sw)
 SET e2.sources = $src
 RETURN count(*) AS n
@@ -96,6 +97,11 @@ def check(zones, assets, services, asset_edges, zone_edges) -> None:
         r["port"] = int(r["port"])
         r["cpe_vendor"] = r.get("cpe_vendor") or None
         r["cpe_product"] = r.get("cpe_product") or None
+        r["distro_package"] = r.get("distro_package") or None
+        r["package_version"] = r.get("package_version") or None
+        if bool(r["distro_package"]) != bool(r["package_version"]):
+            sys.exit(f"services.csv: {r['asset']} {r['software']}: set both distro_package and "
+                     "package_version, or neither")
     for r in asset_edges:
         for end in ("src", "dst"):
             if r[end] not in hosts:

@@ -9,7 +9,7 @@ fire in. A Wazuh alert is mapped onto one Neo4j graph that combines:
 
 From that graph each alert gets a context: the target host, the source, the techniques and their
 mitigations, the related CVEs, the attack paths, and the blast radius. Stage 4 will turn this context
-into a new score and compare it with CVSS. Background: [outline_n_ideas.md](outline_n_ideas.md), plan: [PLAN.md](PLAN.md).
+into a new score and compare it with CVSS. Background: [outline_n_ideas.md](docs/outline_n_ideas.md), plan: [PLAN.md](docs/PLAN.md).
 
 ## Status
 
@@ -20,7 +20,7 @@ into a new score and compare it with CVSS. Background: [outline_n_ideas.md](outl
 | 2.2 Asset knowledge graph | `asset_kg/`, `lab/*.csv` | done |
 | 2.3 Bridges (CVE, platform, reachability) | `asset_kg/link.py` | done |
 | 3. Alert → graph queries | `alert_kg/` | done |
-| 4. Rescoring | — | not started |
+| 4. Rescoring + threat report | `score_kg/` | done: CVSS v3.1 environmental + EPSS / blast radius / alert uplift, SSVC, threat report ([docs/scoring.md](docs/scoring.md)) |
 | 5. Evaluation | — | not started |
 
 ## How the pieces fit
@@ -53,12 +53,12 @@ The Python packages run on the host, from the repository's `.venv`, and talk to 
 | `asset_kg/` | asset graph from `lab/*.csv`, plus the bridges to the CTI graph |
 | `alert_kg/` | Wazuh alerts → `Alert` nodes → alert context JSON |
 | `lab/` | hand-written description of the lab: `assets.csv`, `services.csv`, `zones.csv`, `zone_edges.csv`, `asset_edges.csv`, `os_platforms.csv` |
-| `lab_env/` | the Docker lab itself, with its own [README](../lab_env/README.md) |
+| `lab_env/` | the Docker lab itself, with its own [README](lab_env/README.md) |
 | `overrides/` | manual corrections: platform aliases, entity merges, extra/removed edges, Wazuh rule → technique |
 | `tests/` | pytest suite (offline tests + tests that need Neo4j and the loaded graphs) |
 | `data/` | generated, git-ignored: raw downloads, processed JSONL, reports, alerts |
 | `neo4j_data/` | Neo4j's database files, git-ignored |
-| `docs/` | this README, [schema.md](schema.md), [PLAN.md](PLAN.md), method notes |
+| `docs/` | [schema.md](docs/schema.md), [PLAN.md](docs/PLAN.md), method notes |
 
 ## Requirements
 
@@ -179,9 +179,26 @@ python -m asset_kg all --wipe     # load lab/*.csv -> link -> validate -> stats
 
 | Bridge | Edge | From |
 |---|---|---|
-| CVEs on a host | `Software -IDENTIFIED_AS-> CPE`, `Software -HAS_VULNERABILITY-> Vulnerability` | `cpe_vendor`/`cpe_product`/`version` in `lab/services.csv`, version ranges checked in Python |
+| CVEs on a host | `Software -IDENTIFIED_AS-> CPE`, `Software -HAS_VULNERABILITY-> Vulnerability` | upstream builds: NVD version ranges for `cpe_vendor`/`cpe_product`/`version` in `lab/services.csv`; distro packages (`distro_package`, `package_version`): the distribution's security data from OSV (see below) |
 | ATT&CK techniques for a host | `Asset -RUNS_ON-> Platform` | `os` in `lab/assets.csv` + `lab/os_platforms.csv` |
 | Reachability | `Asset/Zone -CAN_REACH-> Service` | zones + `lab/zone_edges.csv` (= the lab's firewall rules) |
+
+**Distro packages and backports.** Debian and Ubuntu patch security holes without changing the
+upstream version. For example, Samba `2:4.17.12+dfsg-0+deb12u4` is still "4.17.12", yet some 4.17.12 CVEs
+are fixed in it. NVD's upstream ranges cannot see that.
+
+For software installed from the OS repository, set `distro_package` (the source package) and
+`package_version` (the full `dpkg` version) in `lab/services.csv`. Its CVEs then come from that
+distribution's security tracker via OSV, matched with dpkg version rules (`asset_kg/osv.py`,
+`asset_kg/dpkg.py`). The OS → OSV ecosystem mapping is in `lab/os_ecosystems.csv`.
+
+Download the OSV data once (about 900 MB), and again whenever you want fresher data:
+
+```powershell
+python -m asset_kg osv-download        # -> data/raw/osv/{Debian,Ubuntu}-all.zip
+```
+
+The first `link` after a download indexes each ecosystem into `data/processed/osv/` (this takes about a minute).
 
 If you change the lab, update `lab/*.csv` to match and run the command again. To find the CPE
 vendor/product pair for a piece of software:
@@ -190,6 +207,28 @@ vendor/product pair for a piece of software:
 python -m asset_kg.find_cpe nginx                          # vendor:product pairs
 python -m asset_kg.find_cpe --versions f5 nginx_open_source   # versions stored for one pair
 ```
+
+#### Validate the CVE links against Wazuh
+
+The lab must be running.
+
+```powershell
+python -m asset_kg wazuh-check
+```
+
+This compares each host's `HAS_VULNERABILITY` links with the CVEs that Wazuh's own vulnerability
+detection reports for the same package on the same agent (`wazuh-states-vulnerabilities-*`).
+Results are reported as **agreement**, not accuracy, because Wazuh is not ground truth ([PLAN.md](docs/PLAN.md) §3).
+What it does:
+
+- It scores only software that Wazuh inventories as a `.deb` package. `lab/wazuh_packages.csv` maps each software to its package.
+- Apache httpd, Node.js and Jenkins are installed from source, a tarball and a WAR file. Wazuh cannot see them, so they are listed as "not scored".
+- Wazuh CVEs that are not in the CTI graph, because those CVE years were not loaded, are counted separately.
+
+| Output | Content |
+|---|---|
+| `data/reports/asset_cve_validation.md` | precision / recall per host and software, disagreements grouped by reason |
+| `data/reports/asset_cve_disagreements.csv` | every CVE on only one side, with CVSS and the reason (e.g. what NVD's range says) |
 
 ### 3. Alerts → graph (`alert_kg`)
 
@@ -217,6 +256,34 @@ How the extraction works:
 - ATT&CK ids that MITRE has revoked are remapped to their replacements. The Wazuh 4.9 ruleset still uses some old ids, e.g. T1562.001 → T1685.
 - Wazuh rules without `rule.mitre` can be mapped by hand in `overrides/wazuh_rule_techniques.csv`.
 
+### 4. Rescoring and threat report (`score_kg`)
+
+Needs Neo4j with the graphs linked, plus alert contexts from `alert_kg` (for the alert part).
+
+```powershell
+python -m score_kg epss-download   # once a day at most: EPSS scores -> data/raw/epss/
+python -m score_kg all             # score asset x CVE and alerts, threat report, sensitivity analysis
+```
+
+For each CVE on each host, the score is the standard **CVSS v3.1 Environmental score** with these inputs from the graph:
+
+- E from KEV or SSVC;
+- CR/IR/AR from the host;
+- MAV from reachability. This can only lower exposure.
+
+A bounded uplift is then added for EPSS (T), the host's blast radius (G) and alert evidence (A):
+`R = min(10, S_env + (10 − S_env)(αT + βG + γA)/(α+β+γ))`. With no context evidence, R equals the standard score.
+Each pair also gets a CISA SSVC decision. Full method and design choices: [docs/scoring.md](docs/scoring.md).
+
+| Output | Content |
+|---|---|
+| `data/reports/threat_report.md` | alerts ranked by **event severity**, shown next to **host risk**. Each comes with an explanation (target, source, path, techniques, mitigations, CVE layers). Also: assets, top vulnerabilities, and a CVSS band → new band matrix |
+| `data/scores/asset_cve_scores.csv`, `alert_scores.csv` | every score and every layer, for analysis |
+| `data/reports/score_sensitivity.md` | how the ranking changes when α, β, γ change |
+
+Weights: `--weights 1,1,2` or `SCORE_WEIGHTS` in `.env` (default 1,1,1). The commands `vulns`, `alerts`,
+`report` and `sensitivity` run one part each.
+
 ## Look at the graph
 
 Neo4j browser at http://localhost:7474. Do **not** run `MATCH (n) RETURN n`: the graph has over
@@ -239,11 +306,11 @@ WHERE last(nodes(p)).hostname = 'PostgreSQL' RETURN p LIMIT 25
 MATCH (al:Alert)-[r]->(x) RETURN al, r, x LIMIT 100
 ```
 
-More queries and every label and edge: [schema.md](schema.md).
+More queries and every label and edge: [schema.md](docs/schema.md).
 
 ## Check the lab
 
-- Firewall and reachability checks, logins, and what Wazuh collects: see [lab_env/README.md](../lab_env/README.md).
+- Firewall and reachability checks, logins, and what Wazuh collects: see [lab_env/README.md](lab_env/README.md).
 - Generate test alerts with harmless events. A missing page gives Wazuh rule 31101, and one wrong password gives 5760 / 50512 / 100110. The commands are in that README.
 
 ## Tests
@@ -264,7 +331,7 @@ with ids starting `test-` and remove them afterwards.
 | `cti-neo4j` restarts in a loop; log says the password must be at least 8 characters | Set an `NEO4J_PASSWORD` of 8+ characters in `.env`, then `docker compose up -d`. |
 | `Neo4j rejected the username/password` | `.env` and the database disagree, because the password was changed after the first start. See *First-time setup*. |
 | `Weakness` count is 0 after `cti_kg` | An old CWE parser. CWE 5.0 changed the XML namespace; the current parser reads both. Re-run `python -m cti_kg all`. |
-| `cp: cannot create regular file '/certificates/...': Permission denied` | The certificate generator ran a second time; the certificates already exist. This is harmless; see [lab_env/README.md](../lab_env/README.md). |
+| `cp: cannot create regular file '/certificates/...': Permission denied` | The certificate generator ran a second time; the certificates already exist. This is harmless; see [lab_env/README.md](lab_env/README.md). |
 | Wazuh dashboard does not come up; indexer exits | `vm.max_map_count` was reset by a Docker Desktop restart. Run the `wsl -d docker-desktop sysctl ...` line, then `docker compose up -d` in `lab_env`. |
 | `The token '\|\|' is not a valid statement separator` | Windows PowerShell 5.1 has no `\|\|` / `&&`. Use `sh -c "... \|\| ..."` inside the container, or PowerShell 7. |
 | No new alerts at all | Check the manager with `docker compose -f lab_env/docker-compose.yml exec wazuh.manager grep -E "CRITICAL\|ERROR" /var/ossec/logs/ossec.log`. A bad local rule stops all analysis. |
@@ -274,7 +341,7 @@ with ids starting `test-` and remove them afterwards.
 ## Known limitations
 
 - **CTI only has CVEs from 2024 on.** Older software in a lab will not link to CVEs until the full corpus is loaded (`python -m cti_kg all` without `--since-year`).
-- **Distro packages (Samba, OpenSSH) are matched to NVD ranges.** Distributions backport fixes without changing the version number, so these may over-report CVEs ([PLAN.md](PLAN.md) §3).
+- **Distro packages (Samba, OpenSSH) are matched to NVD ranges.** Distributions backport fixes without changing the version number, so these may over-report CVEs ([PLAN.md](docs/PLAN.md) §3).
 - **Reachability is per zone and covers all ports,** like the current firewall rules. Per-port rules would need `lab/zone_edges.csv` and `link` to be extended.
 - **All lab hosts are Linux,** so every host gets the same ATT&CK techniques through its platform.
 - **Few techniques lead to CVEs.** Only about 174 ATT&CK techniques can be reached from CWE/CAPEC, so many alerts link to CVEs only when the alert names the CVE.

@@ -6,3 +6,4 @@ python-dotenv>=1.0
 requests>=2.31
 tqdm>=4.66
 pytest>=8.0
+cvss>=3.0

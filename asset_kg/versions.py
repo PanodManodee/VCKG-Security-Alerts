@@ -38,15 +38,34 @@ def in_range(version: str, start_incl=None, start_excl=None, end_incl=None, end_
     return True
 
 
+_INTERVAL = re.compile(r"^([\[(])([^,]*),([^\])]*)([\])])$")
+
+
+def parse_interval(text: str) -> dict:
+    """'[12.0,12.20)' -> in_range() keyword bounds (format written by cti_kg.parse.cve.version_interval)."""
+    m = _INTERVAL.match(text.strip())
+    if not m:
+        raise ValueError(f"not a version interval: {text!r}")
+    lo_bracket, lo, hi, hi_bracket = m.groups()
+    return {"start_incl": lo if lo and lo_bracket == "[" else None,
+            "start_excl": lo if lo and lo_bracket == "(" else None,
+            "end_incl": hi if hi and hi_bracket == "]" else None,
+            "end_excl": hi if hi and hi_bracket == ")" else None}
+
+
 def cpe_applies(installed: str, cpe_version: str, edge: dict) -> bool:
     """Does a VULNERABLE_TO edge from a CPE node apply to the installed version?
 
-    * CPE version '*'  -> the bounds on the edge decide (no bounds = every version).
+    * CPE version '*'  -> the edge's `version_ranges` decide: the version must fall in at least one
+                          of them ('(,)' or no ranges = every version).
     * CPE version '-'  -> "not applicable", never a wildcard.
     * concrete version -> must equal the installed version.
     """
     if cpe_version in (None, "", "*"):
-        return in_range(installed,
+        ranges = edge.get("version_ranges")
+        if ranges:
+            return any(in_range(installed, **parse_interval(r)) for r in ranges)
+        return in_range(installed,     # graphs built before version_ranges: one range per edge
                         edge.get("version_start_including"), edge.get("version_start_excluding"),
                         edge.get("version_end_including"), edge.get("version_end_excluding"))
     if cpe_version == "-":
