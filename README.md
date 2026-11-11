@@ -15,12 +15,12 @@ into a new score and compare it with CVSS. Background: [outline_n_ideas.md](docs
 
 | Stage | Package | Status |
 |---|---|---|
-| 1. Lab test network (Docker) | `lab_env/` | done: 8 hosts, firewall, Kali, Wazuh 4.9.2, service logs collected |
+| 1. Lab test network (Docker) | `lab_env/` | done: 8 hosts, firewall with Suricata IDS, Kali, Wazuh 4.9.2, service logs collected |
 | 2.1 CTI knowledge graph | `cti_kg/` | done for CVEs published 2024 and later |
 | 2.2 Asset knowledge graph | `asset_kg/`, `lab/*.csv` | done |
 | 2.3 Bridges (CVE, platform, reachability) | `asset_kg/link.py` | done |
 | 3. Alert → graph queries | `alert_kg/` | done |
-| 4. Rescoring + threat report | `score_kg/` | done: CVSS v3.1 environmental + EPSS / blast radius / alert uplift, SSVC, threat report ([docs/scoring.md](docs/scoring.md)) |
+| 4. Environmental Vulnerability Score + threat report | `score_kg/` | done as in the paper (§III.A.2–3): blast radius, Env, P(u), EVS, structured JSON; the LLM report is not done yet ([docs/scoring.md](docs/scoring.md)) |
 | 5. Evaluation | — | not started |
 
 ## How the pieces fit
@@ -256,33 +256,36 @@ How the extraction works:
 - ATT&CK ids that MITRE has revoked are remapped to their replacements. The Wazuh 4.9 ruleset still uses some old ids, e.g. T1562.001 → T1685.
 - Wazuh rules without `rule.mitre` can be mapped by hand in `overrides/wazuh_rule_techniques.csv`.
 
-### 4. Rescoring and threat report (`score_kg`)
+### 4. Environmental Vulnerability Score and threat report (`score_kg`)
 
-Needs Neo4j with the graphs linked, plus alert contexts from `alert_kg` (for the alert part).
+This implements the paper's §III.A.2–3. It needs Neo4j with the graphs linked, and alert contexts from `alert_kg`.
 
 ```powershell
-python -m score_kg epss-download   # once a day at most: EPSS scores -> data/raw/epss/
-python -m score_kg all             # score asset x CVE and alerts, threat report, sensitivity analysis
+python -m score_kg all             # EVS of asset x CVE and of alerted instances, JSON assessments, report, sensitivity
+python -m score_kg epss-download   # optional: EPSS, shown as a baseline next to the EVS (not part of it)
 ```
 
-For each CVE on each host, the score is the standard **CVSS v3.1 Environmental score** with these inputs from the graph:
+For each vulnerability instance (a, c) reported by an alert (Suricata via the Wazuh agent `ids`, or a Wazuh rule
+naming a CVE):
 
-- E from KEV or SSVC;
-- CR/IR/AR from the host;
-- MAV from reachability. This can only lower exposure.
+1. **Blast radius** BR₁(a, c): the assets one `CONNECTS_TO` hop away that the firewall policy allows. Use
+   out-edges if c compromises confidentiality or integrity, in-edges if it only affects availability.
+2. **Env(c, u):** the CVSS v3.1 Environmental score with metrics from the graph (Table I):
+   - CR/IR/AR of the asset;
+   - MAV = base AV if the Internet zone reaches the asset's zone through `ALLOWED_TO_REACH`, otherwise N → A;
+   - E = H for the alerted CVE.
+3. **EVS** = `min(10, Env · (1 + β·P(u)))`. P(u) is the criticality of the assets reachable from u, discounted by γ per hop.
+4. **Level**: Critical / High / Medium / Low.
 
-A bounded uplift is then added for EPSS (T), the host's blast radius (G) and alert evidence (A):
-`R = min(10, S_env + (10 − S_env)(αT + βG + γA)/(α+β+γ))`. With no context evidence, R equals the standard score.
-Each pair also gets a CISA SSVC decision. Full method and design choices: [docs/scoring.md](docs/scoring.md).
+Defaults: β = 0.5, γ = 0.5, k = 1 (`--beta`, `--gamma`, `--k`, or `SCORE_BETA` / `SCORE_GAMMA` / `SCORE_BLAST_K`).
+Method and design choices: [docs/scoring.md](docs/scoring.md).
 
 | Output | Content |
 |---|---|
-| `data/reports/threat_report.md` | alerts ranked by **event severity**, shown next to **host risk**. Each comes with an explanation (target, source, path, techniques, mitigations, CVE layers). Also: assets, top vulnerabilities, and a CVSS band → new band matrix |
-| `data/scores/asset_cve_scores.csv`, `alert_scores.csv` | every score and every layer, for analysis |
-| `data/reports/score_sensitivity.md` | how the ranking changes when α, β, γ change |
-
-Weights: `--weights 1,1,2` or `SCORE_WEIGHTS` in `.env` (default 1,1,1). The commands `vulns`, `alerts`,
-`report` and `sensitivity` run one part each.
+| `data/reports/assessments/*.json` | the structured assessment per alerted instance (alert, asset, CVE, base CVSS, EVS, level, affected assets, mitigations): the input for the LLM threat report |
+| `data/reports/threat_report.md` | alerted instances ranked by EVS with every intermediate value, alerts with no CVE (not scored), assets, CVSS band → EVS level |
+| `data/scores/asset_cve_scores.csv`, `alert_scores.csv` | every score and metric. EPSS, KEV and SSVC are baseline columns only |
+| `data/reports/score_sensitivity.md` | ranking stability for other β and γ |
 
 ## Look at the graph
 

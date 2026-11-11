@@ -66,3 +66,10 @@ def test_revoked_wazuh_technique_reaches_the_graph(session):
     ctx = build_context(session, "test-agent-stopped")
     assert [t["id"] for t in ctx["techniques"]] == ["T1685"]
     assert ctx["alert"]["techniques_original"] == ["T1562.001"]
+
+
+def test_sensor_alert_targets_the_destination_asset(session):
+    ctx = build_context(session, "test-suricata-jenkins")
+    assert ctx["target"]["hostname"] == "Jenkins"            # agent `ids` is not an asset: dest_ip decides
+    assert ctx["source"]["name"] == "Web"
+    assert ctx["vulnerabilities"]["related_to_alert"][0]["cve"] == "CVE-2024-23897"

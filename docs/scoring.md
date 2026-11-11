@@ -1,124 +1,93 @@
-# Stage 4: context-aware scoring (method)
+# Stage 4: Environmental Vulnerability Score (EVS)
 
-This document describes how `score_kg` turns the unified graph into a priority for each vulnerability on each
-host, and for each alert. It is written so it can be lifted into the paper's method section.
-Code: `score_kg/` (`cvss31.py`, `ssvc.py`, `model.py`). Design rationale and literature:
-`reports/Asset KG linking and alert rescoring.md`.
+This document is the implementation of the paper's §III.A.2–3 ("Affected Assets Identification" and
+"Environmental Vulnerability Score"). Equation numbers match the paper. Code: `score_kg/model.py` (the
+equations), `score_kg/cvss31.py` (Table I), `score_kg/graph.py` (graph queries) and `score_kg/run.py`
+(outputs). The parameters the paper leaves open are listed in §5.
 
-## 1. Score for one asset × CVE
+## 1. Input: vulnerability instances (a, c)
 
-The score is built in layers. Each layer is a standard metric or a bounded, documented addition, so it can be
-explained and ablated.
+A monitoring tool reports a vulnerability instance as a pair (a, c): a ∈ V_A is the affected asset and c
+is the reported CVE.
 
-### 1.1 Standard part: CVSS v3.1 Environmental score `S_env`
-
-The CVE's CVSS v3.1 base vector (NVD, or the CNA when NVD has none) is extended with metrics taken from the graph.
-It is then scored with the standard formula (FIRST CVSS v3.1 specification, via the `cvss` library).
-
-| Metric | Value | Source in the graph |
-|---|---|---|
-| E (Exploit Code Maturity) | **H** if the CVE is in CISA KEV or CISA vulnrichment says `exploitation = active`; **P** if `poc`; **U** if `none`; **X** if unknown | `Vulnerability.kev_date_added`, `ssvc_exploitation` |
-| CR / IR / AR (security requirements) | the host's confidentiality / integrity / availability requirement, L/M/H | `Asset.cr/ir/ar` (`lab/assets.csv`) |
-| MAV (Modified Attack Vector) | the **less exposed** of the CVE's own AV and the host's position: **N** if a zone without assets (the Internet) can reach one of its services; **A** if only other hosts can reach it; **L** if nothing can | `Asset.internet_exposed`, `CAN_REACH` |
-
-Design choices:
-
-- **MAV can only lower exposure.** A network-exploitable bug on a host that no one can reach is effectively
-  local, but a local bug never becomes network-exploitable because the host is exposed.
-- **Using A for "reachable only from inside"** reads CVSS's *adjacent* as "the attacker must already be inside
-  the network". This is a documented interpretation, not a literal subnet test.
-- CVSS threat metrics can only lower a score (E = X is the worst case). So in `S_env`, threat information
-  demotes CVEs nobody exploits. Promotion comes from the environment and from the uplift below.
-
-### 1.2 Context uplift `R`
-
-```
-R = min(10, S_env + (10 − S_env) · (α·T + β·G + γ·A) / (α + β + γ))
-```
-
-| Term | Meaning | Range | Computation |
-|---|---|---|---|
-| T | threat: probability of exploitation activity | 0–1 | EPSS percentile of the CVE (FIRST, daily file; model and date are printed in the report). A CVE without a score counts as 0 |
-| G | blast radius: value reachable *from* the host once compromised | 0–1 | Σ value(b) / hops(a→b) over the hosts b reachable in 1–3 `CAN_REACH` hops, ÷ Σ value of all other hosts. value = highest of CR/IR/AR (H 1.5, M 1.0, L 0.5) / 1.5 |
-| A | alert evidence | 0 or 1 | 1: an alert on the host names this CVE, or its ATT&CK technique leads to the CVE (Technique ← CAPEC ← CWE → CVE). 0: otherwise |
-| α, β, γ | weights | ≥ 0 | 1, 1, 1 by default (`SCORE_WEIGHTS`). `score_sensitivity.md` reports how the ranking changes under 63 other settings |
-
-Properties:
-
-1. With no context evidence (T = G = A = 0), R equals the standard CVSS v3.1 environmental score.
-2. Every context signal closes part of the remaining gap to 10, so R ≤ 10 always.
-3. A score can only go **down** through standard CVSS metrics (low requirements, less exposed MAV, E = U).
-4. G measures the consequences *beyond* the host, and MAV measures the exposure *of* the host. They are kept
-   apart so they are not counted twice, and each can be ablated on its own.
-
-The **band** is the CVSS qualitative rating applied to R (None / Low / Medium / High / Critical). The report
-compares it with the band of the CVSS base score.
-
-### 1.3 Categorical outcome: CISA SSVC
-
-Each pair also gets a CISA SSVC decision (Track / Track* / Attend / Act), from CISA's SSVC Guide, Tables 8
-and 9. The inputs:
-
-- **Exploitation, Automatable, Technical Impact:** CISA vulnrichment (`ssvc_*`). If the CVE is in KEV,
-  exploitation is set to *active*.
-- **Mission Prevalence:** the host's highest requirement. H = Essential, M = Support, L = Minimal.
-- **Public Well-Being:** *Minimal* for every lab host, since none is safety-relevant.
-
-SSVC is a second, independent baseline. It is not an input to R.
-
-## 2. Scores of an alert
-
-Alert contexts come from `alert_kg`. Alerts with the same rule, target and source are grouped and counted.
-Each group gets two scores on the same 0–10 scale.
-
-**Event severity: how dangerous this event is. This is the ranking key.**
-
-- *The alert leads to a CVE on its host.* Either the alert names the CVE, or its ATT&CK technique reaches the
-  CVE through Technique ← CAPEC ← CWE → CVE. The event severity is then the highest R among those CVEs, with
-  A = 1. The CVE's SSVC decision applies.
-- *The alert leads to no CVE.* This covers, for example, brute force or account changes, whose techniques
-  have no CAPEC/CWE path to a vulnerability. The event severity is then built the same way as a CVE score,
-  from Wazuh's own severity:
-
-  ```
-  base     = rule.level × 10 / 15                        Wazuh levels 0–15 mapped to 0–10
-  S_event  = min(10, Roundup(base × w))                  w = highest of the host's CR/IR/AR weights (H 1.5, M 1.0, L 0.5)
-  R_event  = S_event + (10 − S_event) · β·G / (α + β + γ)
-  ```
-
-  w plays the role of CVSS's security requirements: the same event matters more on a valuable host.
-  The uplift keeps only the blast radius G. There is no CVE, so there is no EPSS (T = 0). The alert itself
-  is already the base, so alert evidence would count it twice (A = 0). Because the denominator is the same
-  as for CVEs, both kinds of event severity sit on one scale and can be ranked together.
-
-- If an alert leads to a CVE but `R_event` is higher, the higher value is used, and the report names the basis.
-
-**Host risk: how dangerous the host is, whatever the event.** This is the highest R among all CVEs on the host,
-with no alert evidence (A = 0), together with that CVE's SSVC decision.
-
-The report puts both scores side by side with two baselines, Wazuh's `rule.level` and the highest CVSS base
-score on the host. A low-level event on a very vulnerable host therefore shows as *low event severity, high
-host risk*. It is not promoted above a more serious event on a less vulnerable host.
-
-## 3. Outputs
-
-| File | Content |
+| Source | How the pair is found (`alert_kg`) |
 |---|---|
-| `data/scores/asset_cve_scores.csv` | every asset × CVE: base, E, MAV, CR/IR/AR, environmental vector, S_env, EPSS, T, G, A, R, band, SSVC, KEV, CVE source (NVD / OSV) |
-| `data/scores/alert_scores.csv` | every alert group: event severity (and what it is based on), host risk, host SSVC, Wazuh level, highest CVSS on the host |
-| `data/reports/threat_report.md` | alerts ranked by priority with explanations, assets, top vulnerabilities, CVSS-band → R-band matrix |
-| `data/reports/score_sensitivity.md` | Kendall τ and top-k overlap of the ranking under 63 weight settings |
-| Neo4j | `Alert.event_score`, `event_band`, `event_basis`, `host_risk`, `host_band`, `host_top_cve`, `ssvc` |
+| Suricata (EVE JSON, forwarded by the Wazuh agent `ids`) | a = the asset whose IP is `data.dest_ip`. c = `data.alert.metadata.cve` (`CVE_2024_23897` → `CVE-2024-23897`) or a CVE id in `data.alert.signature`. |
+| Wazuh rules on a host agent (e.g. vulnerability detector) | a = the agent's host. c = `data.vulnerability.cve`. |
 
-## 4. Known limits
+Alerts with the same rule, asset and CVE form one instance and are counted together. Alerts that name no CVE
+are not scored, because the method is defined for (a, c). The threat report lists them separately.
 
-- **Alerts that lead to no CVE** are scored from Wazuh's `rule.level`. Their event severity is only as good
-  as Wazuh's rule levels, scaled by host value and blast radius. The linear mapping of levels 0–15 to 0–10 is
-  a design choice.
-- **Few techniques lead to CVEs.** Only about 174 ATT&CK techniques reach a CVE through CWE/CAPEC, so most
-  alerts are scored from the Wazuh level. Alerts from real exploit attempts that name a CVE are scored from
-  the CVE.
-- **CVSS v3.1 is the standard used.** Only a few lab CVEs have v4 vectors. CVSS v4 BTE is future work.
-- **The weights are not elicited from experts yet** (AHP is planned). The sensitivity report shows how much the
-  ranking depends on them.
-- **EPSS is today's score.** A forward-in-time evaluation (stage 5, tier A) must use EPSS as of the evaluation date.
+## 2. Affected assets: blast radius (Eqs. 5–9, Algorithm 1)
+
+**Asset Reachability Graph G_R (Eqs. 5–6).** This is a projection of the VCKG onto assets. The edges are the
+`CONNECTS_TO` edges (u, v) that the network policy permits, written π(u, v): either u and v are in the same
+zone, or zone(u) `ALLOWED_TO_REACH` zone(v). Zones only constrain traversal; they are never a way to expand
+it.
+
+**Impact mode.** m(c) = *compromise* if the CVSS v3.1 Confidentiality or Integrity impact of c is not None,
+and *disruption* otherwise. A compromised host is a pivot towards what it can reach (out-neighbours, Eq. 7).
+A disrupted host affects the hosts that depend on it (in-neighbours, Eq. 8).
+
+**Blast radius (Eq. 9).** BR_k(a, c) = {v : d_c(a, v) ≤ k}, using a breadth-first search on G_R in the
+direction m(c). It always contains a itself, at distance 0. In this work k = 1.
+
+In the lab, `CONNECTS_TO` (`lab/asset_edges.csv`) contains Nginx→Web, Web→API, Jenkins→API, API→PostgreSQL
+and Admin-PC→Files-SMB. For example:
+
+- BR₁(Jenkins, compromise) = {Jenkins, API}
+- BR₁(API, disruption) = {API, Web, Jenkins}
+
+## 3. Environmental score Env(c, u) (Eqs. 10–13, Table I)
+
+The CVSS v3.1 Environmental equation is applied to the base vector of c, using metrics taken from the VCKG
+instead of being assigned by hand. The `cvss` library computes it to the FIRST specification, including
+Roundup.
+
+| Metric | Derivation (Table I) |
+|---|---|
+| CR, IR, AR | the attributes of u's Asset node (`lab/assets.csv`, with a justification) |
+| MAV | the base AV if a path of `ALLOWED_TO_REACH` edges, of any length, connects the Internet zone to zone(u). Otherwise AV:N is lowered to A; A, L and P stay as they are. In the lab, DMZ, APP and DATA are reachable (Internet→DMZ→APP→DATA) and Office is not |
+| E | H if the triggering alert reports c on u; otherwise Not Defined |
+| RL, RC | Not Defined |
+| all other metrics | the base values of c |
+
+## 4. Propagation and final score (Eqs. 14–17)
+
+```
+crit(v) = max(CR_v, IR_v, AR_v) − 0.5            weights H 1.5, M 1.0, L 0.5  →  H 1, M 0.5, L 0      (14)
+P(u)    = 1/(|V_A| − 1) · Σ_{v ∈ R(u)\{u}} crit(v) · γ^d(u,v)                                         (15)
+EVS     = min(10, Env(c, u) · (1 + β · P(u)))                                                         (16)
+level   = Critical 9.0–10, High 7.0–8.9, Medium 4.0–6.9, Low 0.1–3.9                                  (17)
+```
+
+R(u) is every asset reachable from u in G_R, at any depth, and d(u, v) is the shortest hop distance. Each
+graph signal enters exactly one term. Internet exposure changes only MAV, and lateral reachability changes
+only P(u).
+
+Lab example. P(Nginx) = (crit(Web)·γ + crit(API)·γ² + crit(PostgreSQL)·γ³) / 7 = (0.5 + 0.25 + 0.125) / 7 = 0.125.
+With β = 0.5, Nginx's EVS is Env × 1.0625.
+
+## 5. Choices the paper leaves to the implementation
+
+| Choice | Value | Where |
+|---|---|---|
+| β (bound on the uplift) | 0.5. With P = 1, EVS = 1.5 × Env | `SCORE_BETA`, `--beta` |
+| γ (distance discount) | 0.5 | `SCORE_GAMMA`, `--gamma` |
+| k (blast-radius depth) | 1, as in the paper | `SCORE_BLAST_K`, `--k` |
+| Rounding of the EVS | rounded up to one decimal, like every CVSS score (CVSS Roundup) | `model.roundup` |
+| Internet zone | the Zone named `Internet` | `SCORE_INTERNET_ZONE` |
+| Vulnerabilities on an asset without an alert | scored with E = Not Defined (Table I's "otherwise") | `python -m score_kg vulns` |
+| Alerted CVE not linked to the asset's software | still scored, and flagged `present_on_asset_per_graph: false` (e.g. an attempt against software the host does not run) | assessment JSON |
+
+`python -m score_kg sensitivity` reports how the ranking changes for β ∈ {0, 0.25, 0.5, 0.75, 1} and
+γ ∈ {0.25, 0.5, 0.75}.
+
+## 6. Outputs
+
+| Output | Content |
+|---|---|
+| `data/reports/assessments/<asset>_<cve>_<rule>.json` | the structured object of §III.A.4 for each alerted instance: alert, affected asset (with CR/IR/AR and justification), CVE and base CVSS, Env, P(u), EVS, risk level, blast-radius assets with their CIA requirements, mitigations from the VCKG (CWE `MITIGATED_BY`, plus ATT&CK mitigations of the alert's technique). This is the input for the LLM threat report (not implemented yet) |
+| `data/reports/threat_report.md` | alerted instances ranked by EVS with every intermediate value, the alerts that report no CVE, assets, and a CVSS band → EVS level matrix |
+| `data/scores/alert_scores.csv`, `asset_cve_scores.csv` | every score and metric. The asset × CVE file also holds EPSS, KEV and CISA SSVC as **baselines** for stage 5; they are not part of the EVS |
+| Neo4j | `Alert.evs`, `evs_level`, `evs_cve`, `blast_radius` |

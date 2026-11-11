@@ -25,6 +25,17 @@ ip route replace default via 172.30.0.1 dev "$INET"
 
 iptables -F FORWARD
 iptables -t nat -F POSTROUTING
+iptables -t mangle -F FORWARD
+if [ "${IDS_NFQUEUE:-1}" = "1" ]; then
+    # Copy every forwarded packet to the IDS (Suricata, queue 0) before the filter table decides.
+    # The verdict in mangle only ends the mangle chain, so the rules below still apply;
+    # --queue-bypass lets traffic through while Suricata is not running.
+    if iptables -t mangle -A FORWARD -j NFQUEUE --queue-num 0 --queue-bypass; then
+        echo "firewall: forwarded traffic queued to the IDS (NFQUEUE 0)"
+    else
+        echo "firewall: NFQUEUE not available in this kernel; run the IDS with IDS_MODE=pcap"
+    fi
+fi
 iptables -P FORWARD DROP
 iptables -A FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
 

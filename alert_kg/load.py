@@ -1,6 +1,7 @@
 """Write normalized alerts into the unified graph as Alert nodes.
 
-    (Alert)-[:TARGETS]->(Asset)            agent.name (case-insensitive) or agent.ip
+    (Alert)-[:TARGETS]->(Asset)            agent.name (case-insensitive) or agent.ip; for agents that are not
+                                           assets (the Suricata sensor `ids`), the asset with IP = data.dest_ip
     (Alert)-[:INDICATES]->(Technique)      rule.mitre.id or the rule lookup table
     (Alert)-[:MENTIONS]->(Vulnerability)   data.vulnerability.cve
     (Alert)-[:FROM]->(Asset)               data.srcip is a lab host
@@ -25,13 +26,17 @@ UNWIND $rows AS r
 MERGE (al:Alert {alert_id: r.alert_id})
 SET al += r{.timestamp, .rule_id, .rule_level, .description, .groups, .agent_name, .agent_ip,
             .techniques, .techniques_original, .technique_source, .tactics, .cves,
-            .srcip, .dstip, .dstport, .full_log},
+            .srcip, .dstip, .dstport, .signature, .signature_id, .full_log},
     al.sources = $src
 WITH al, r
 CALL (al, r) {
+  // the agent's own host first; for network sensors that are not assets (Suricata on the `ids` agent),
+  // the asset whose IP is the alert's destination (paper §III.A.2)
   OPTIONAL MATCH (a:Asset)
   WHERE toLower(a.hostname) = toLower(r.agent_name) OR (r.agent_ip IS NOT NULL AND a.ip = r.agent_ip)
-  WITH a ORDER BY toLower(a.hostname) = toLower(r.agent_name) DESC LIMIT 1
+     OR (r.dstip IS NOT NULL AND a.ip = r.dstip)
+  WITH a ORDER BY CASE WHEN toLower(a.hostname) = toLower(r.agent_name) THEN 0
+                       WHEN a.ip = r.agent_ip THEN 1 ELSE 2 END LIMIT 1
   FOREACH (_ IN CASE WHEN a IS NULL THEN [] ELSE [1] END |
     MERGE (al)-[e:TARGETS]->(a) SET e.sources = $src)
 }

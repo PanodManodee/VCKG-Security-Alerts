@@ -1,0 +1,8 @@
+# Lab rules, merged into the ET Open rule set by suricata-update (sid 9000000-9000999).
+#
+# LAB TEST signature. It is NOT an exploit detector: it fires on any HTTP request to the Jenkins CLI
+# endpoint, which is the attack surface of CVE-2024-23897. It lets the lab check the whole pipeline
+# (Suricata -> Wazuh -> alert_kg -> EVS) with a harmless request:
+#     docker compose exec web curl -s http://10.10.20.22:8080/cli
+# Real exploitation attempts are detected by the ET Open rules, which carry `metadata: cve ...` themselves.
+alert http any any -> 10.10.20.22 8080 (msg:"LAB TEST Jenkins CLI endpoint request (CVE-2024-23897 surface)"; flow:established,to_server; http.uri; content:"/cli"; startswith; metadata:cve CVE_2024_23897; classtype:attempted-admin; sid:9000001; rev:1;)

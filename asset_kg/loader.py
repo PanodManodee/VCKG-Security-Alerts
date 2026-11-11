@@ -24,7 +24,7 @@ Q_ASSETS = """
 UNWIND $rows AS r
 MERGE (a:Asset {hostname: r.hostname})
 SET a.role = r.role, a.os = r.os, a.ip = r.ip,
-    a.cr = r.cr, a.ir = r.ir, a.ar = r.ar, a.sources = $src
+    a.cr = r.cr, a.ir = r.ir, a.ar = r.ar, a.justification = r.justification, a.sources = $src
 WITH a, r
 MATCH (z:Zone {name: r.zone})
 MERGE (a)-[e:IN_ZONE]->(z)
@@ -91,6 +91,7 @@ def check(zones, assets, services, asset_edges, zone_edges) -> None:
             sys.exit(f"assets.csv: {r['hostname']} uses unknown zone {r['zone']!r}")
         r["ip"] = r["ip"] or None
         r["os"] = r["os"] or None
+        r["justification"] = r.get("justification") or None
     for r in services:
         if r["asset"] not in hosts:
             sys.exit(f"services.csv: unknown asset {r['asset']!r}")

@@ -1,6 +1,6 @@
 # VCKG lab environment (topology of lab_network.pdf). Run from lab_env/, see README.md.
 #
-#   Attacker (Kali) -> Firewall -> DMZ    : Nginx, Web
+#   Attacker (Kali) -> Firewall (+ Suricata IDS) -> DMZ : Nginx, Web
 #                               -> APP    : API, Jenkins
 #                               -> DATA   : PostgreSQL, Files-SMB
 #                               -> Office : Admin-PC, Dep-PC
@@ -41,6 +41,7 @@ services:
       net.ipv4.conf.all.rp_filter: "0"
     environment:
       FW_ALLOW_EGRESS: ${FW_ALLOW_EGRESS:-0}
+      IDS_NFQUEUE: ${IDS_NFQUEUE:-1}
     networks:
       internet: { ipv4_address: 172.30.0.254 }
       dmz:      { ipv4_address: 10.10.10.254 }
@@ -48,6 +49,20 @@ services:
       data:     { ipv4_address: 10.10.30.254 }
       office:   { ipv4_address: 10.10.40.254 }
       sec:      { ipv4_address: 10.10.90.254 }
+
+  ids:
+    # Suricata network IDS (paper §III.A.2) in the firewall's network namespace: it sees all traffic between zones.
+    # Alerts (EVE JSON) go to Wazuh through the agent `ids`; alert_kg maps them to the asset by destination IP.
+    build: { context: ., dockerfile: ids/Dockerfile, args: *build-args }
+    image: vckg-lab-ids
+    network_mode: "service:firewall"
+    cap_add: [NET_ADMIN, NET_RAW, SYS_NICE]
+    depends_on: [firewall]
+    environment:
+      WAZUH_MANAGER: 10.10.90.10
+      WAZUH_AGENT_NAME: ids
+      LAB_LOGFILES: json:/var/log/suricata/eve.json
+      IDS_MODE: ${IDS_MODE:-nfq}
 
   kali:
     build: { context: ., dockerfile: kali/Dockerfile }

@@ -120,11 +120,11 @@ RETURN p LIMIT 25
 
 | Edge | Direction | Origin |
 |---|---|---|
-| TARGETS | Alert → Asset | `agent.name` (case-insensitive), else `agent.ip` |
+| TARGETS | Alert → Asset | `agent.name` (case-insensitive), else `agent.ip`; for the network sensor `ids` (Suricata), the asset whose IP is `data.dest_ip` |
 | INDICATES | Alert → Technique | `rule.mitre.id` (revoked ids remapped), else `overrides/wazuh_rule_techniques.csv` (`via` on the edge) |
-| MENTIONS | Alert → Vulnerability | `data.vulnerability.cve` |
+| MENTIONS | Alert → Vulnerability | `data.vulnerability.cve`; Suricata `data.alert.metadata.cve` and CVE ids in `data.alert.signature` |
 | FROM | Alert → Asset, Alert → Zone | `data.srcip` = a lab host's IP, otherwise the Internet zone (loopback ignored) |
 
 `Alert` key: `alert_id` (indexer `_id`). It also stores `rule_id`, `rule_level`, `description`, `groups`,
 `techniques`, `techniques_original`, `cves`, `srcip`, `dstip`, `dstport`, `timestamp` and `full_log`.
-After `python -m score_kg alerts`, it also has `event_score` / `event_band` / `event_basis` (how dangerous the event is, 0–10, and whether it is based on a linked CVE or the Wazuh level), `host_risk` / `host_band` / `host_top_cve` (how dangerous the host is) and `ssvc` (CISA SSVC decision). See [scoring.md](scoring.md).
+After `python -m score_kg alerts`, alerts that report a CVE also have `evs`, `evs_level`, `evs_cve` (the Environmental Vulnerability Score of the instance) and `blast_radius` (asset hostnames in BR_k). See [scoring.md](scoring.md).
