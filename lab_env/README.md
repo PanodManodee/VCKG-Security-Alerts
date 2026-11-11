@@ -119,6 +119,33 @@ Check one log line without generating it in the lab:
 Known gap: requests that pass through nginx show nginx (10.10.10.11) as the client in Web's log. The real
 client is only in nginx's own log (and in the `X-Forwarded-For` header nginx adds).
 
+## Network IDS (Suricata)
+
+The `ids` container runs Suricata inside the firewall's network namespace (`network_mode: service:firewall`),
+so it sees all traffic between zones. The firewall hands each forwarded packet to it through
+`NFQUEUE 0` in the `mangle` table:
+
+- Suricata only observes. The filter rules still decide what passes.
+- `--queue-bypass` keeps traffic flowing while Suricata is down.
+
+Rules: ET Open is fetched by `suricata-update` when the image is built, plus the lab rules in
+`ids/local.rules`. Alerts go to `/var/log/suricata/eve.json` (alerts only, with rule metadata). The Wazuh agent
+`ids` forwards them, and Wazuh rule 86601 raises them as "Suricata: Alert - …". `alert_kg` maps each alert to the
+asset with the alert's destination IP, and takes the CVE from the rule's `metadata: cve …` or from the
+signature text. This gives the vulnerability instance (a, c) that the EVS scores.
+
+```bash
+docker compose up -d --build firewall ids
+docker compose logs ids | head                            # "ids: N rules loaded, mode nfq"
+
+# Lab test signature (sid 9000001): a harmless request to the Jenkins CLI endpoint (the surface of CVE-2024-23897)
+docker compose exec web curl -s -o /dev/null http://10.10.20.22:8080/cli
+docker compose exec ids tail -1 /var/log/suricata/eve.json
+```
+
+If the firewall log says NFQUEUE is not available in the kernel, start the IDS with `IDS_MODE=pcap`. It then
+sniffs every interface, so one flow can raise two alerts (on its way in and on its way out).
+
 ## From the lab to the asset graph
 
 `lab/assets.csv` and `lab/services.csv` already list these IPs, versions and CPE pairs. If you change a

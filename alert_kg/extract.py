@@ -72,8 +72,14 @@ def normalize(hit: dict, rule_techniques: dict[str, list[str]] | None = None,
 
     vuln = data.get("vulnerability") or {}
     cves = {c.upper() for c in _as_list(vuln.get("cve")) + _as_list(vuln.get("id")) if CVE.fullmatch(str(c))}
+    # Suricata EVE alerts (forwarded by the Wazuh agent as JSON): the rule's `metadata: cve CVE_2024_23897`
+    # and CVE ids written in the signature, e.g. "ET EXPLOIT ... (CVE-2024-23897)".
+    ids_alert = data.get("alert") if isinstance(data.get("alert"), dict) else {}
+    meta_cves = _as_list((ids_alert.get("metadata") or {}).get("cve"))
+    cves |= {str(c).upper().replace("_", "-") for c in meta_cves if CVE.fullmatch(str(c).upper().replace("_", "-"))}
+    cves |= {m.upper() for m in CVE.findall(str(ids_alert.get("signature") or ""))}
 
-    dstport = _first(data.get("dstport"))
+    dstport = _first(data.get("dstport"), data.get("dest_port"))
     return {
         "alert_id": str(hit.get("_id") or src.get("id")),
         "timestamp": src.get("@timestamp") or src.get("timestamp"),
@@ -90,8 +96,10 @@ def normalize(hit: dict, rule_techniques: dict[str, list[str]] | None = None,
         "tactics": _as_list(mitre.get("tactic")),
         "cves": sorted(cves),
         "srcip": _first(data.get("srcip"), data.get("src_ip")),
-        "dstip": _first(data.get("dstip"), data.get("dst_ip")),
+        "dstip": _first(data.get("dstip"), data.get("dst_ip"), data.get("dest_ip")),
         "dstport": int(dstport) if dstport and dstport.isdigit() else None,
+        "signature": ids_alert.get("signature"),
+        "signature_id": _first(ids_alert.get("signature_id")),
         "full_log": (src.get("full_log") or "")[:2000],
     }
 

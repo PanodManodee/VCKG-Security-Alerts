@@ -42,6 +42,14 @@ EOF
 
 if [ "${WAZUH_ENABLED:-1}" = "1" ] && [ -x /var/ossec/bin/wazuh-control ]; then
     sed -i "s|<address>.*</address>|<address>${WAZUH_MANAGER:-10.10.90.10}</address>|" "$OSSEC_CONF"
+    if [ -n "${WAZUH_AGENT_NAME:-}" ] && ! grep -q "<agent_name>" "$OSSEC_CONF"; then
+        # enroll under this name instead of the container hostname
+        if grep -q "<enrollment>" "$OSSEC_CONF"; then
+            sed -i "0,/<enrollment>/s|<enrollment>|<enrollment><agent_name>${WAZUH_AGENT_NAME}</agent_name>|" "$OSSEC_CONF"
+        else
+            sed -i "0,/<client>/s|<client>|<client><enrollment><agent_name>${WAZUH_AGENT_NAME}</agent_name></enrollment>|" "$OSSEC_CONF"
+        fi
+    fi
     add_localfile syslog /var/log/auth.log
     add_localfile syslog /var/log/syslog
     for entry in ${LAB_LOGFILES:-}; do

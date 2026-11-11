@@ -49,3 +49,11 @@ def test_bare_document_without_hit_wrapper():
     r = normalize(doc)
     assert r["alert_id"] == doc["id"]
     assert r["srcip"] == "172.30.0.10"
+
+
+def test_suricata_alert_gives_destination_and_cve_from_rule_metadata():
+    r = normalize(ALERTS["test-suricata-jenkins"])
+    assert r["agent_name"] == "ids"
+    assert r["dstip"] == "10.10.20.22" and r["dstport"] == 8080 and r["srcip"] == "10.10.10.12"
+    assert r["cves"] == ["CVE-2024-23897"]                    # CVE_2024_23897 in metadata, CVE-... in signature
+    assert r["signature_id"] == "9000001"

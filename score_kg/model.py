@@ -1,80 +1,101 @@
-"""The context-aware score for one asset x CVE (docs/scoring.md).
+"""Environmental Vulnerability Score (paper §III.A.2-3, Eqs. 5-17, Algorithm 1). Pure functions.
 
-    S_env = CVSS v3.1 Environmental (E from KEV/SSVC, CR/IR/AR from the asset, MAV from reachability)
-    R     = min(10, S_env + (10 - S_env) * (aT + bG + cA) / (a + b + c))
-
-    T  EPSS percentile of the CVE                         (threat outside CVSS: CVSS threat can only lower)
-    G  blast radius of the asset in [0, 1]                (value reachable from it once it is compromised)
-    A  alert evidence: 1 an alert points at this CVE, 0 otherwise
-
-With T = G = A = 0, R equals the standard environmental score; every context signal closes part of the
-gap to 10, and a score can only go down through the standard CVSS metrics.
+    G_R      Asset Reachability Graph: CONNECTS_TO edges (u, v) whose zones allow the flow (Eqs. 5-6)
+    m(c)     impact mode: compromise if the CVSS C or I impact is not None, otherwise disruption
+    BR_k     blast radius: BFS over G_R to depth k, out-edges for compromise, in-edges for disruption (Eqs. 7-9)
+    Env      CVSS v3.1 Environmental score with graph-derived metrics (Eqs. 10-13, Table I; cvss31.py)
+    crit(v)  max(CR, IR, AR) - 0.5 with weights H 1.5, M 1.0, L 0.5  ->  H 1, M 0.5, L 0 (Eq. 14)
+    P(u)     1/(|V_A| - 1) * sum over v reachable from u of crit(v) * gamma^d(u,v) (Eq. 15)
+    EVS      min(10, Env * (1 + beta * P(u)))  (Eq. 16), level by the CVSS qualitative scale (Eq. 17)
 """
 import math
+from collections import deque
 
-from . import cvss31, ssvc
+from . import cvss31
 
-VALUE = {"H": 1.5, "M": 1.0, "L": 0.5}       # CVSS v3.1 security-requirement weights
-
-
-def asset_value(cr: str, ir: str, ar: str) -> float:
-    """Asset value in (0, 1]: its highest requirement weight / 1.5 (FIPS 199 high-water mark)."""
-    return max(VALUE[cr], VALUE[ir], VALUE[ar]) / 1.5
+WEIGHT = {"H": 1.5, "M": 1.0, "L": 0.5}           # CVSS v3.1 security-requirement weights
 
 
-def blast_radius(reachable: list[tuple[float, int]], total_other_value: float) -> float:
-    """G: sum of value / hops over the assets reachable from this one, normalised by all other assets' value."""
-    if total_other_value <= 0:
+def crit(cr: str, ir: str, ar: str) -> float:
+    """Eq. 14: the asset's highest security requirement, normalised to [0, 1]."""
+    return max(WEIGHT[cr], WEIGHT[ir], WEIGHT[ar]) - 0.5
+
+
+def impact_mode(base_vector: str) -> str:
+    """compromise if the vulnerability affects confidentiality or integrity, else disruption."""
+    m = cvss31.metrics(base_vector)
+    return "compromise" if m.get("C", "N") != "N" or m.get("I", "N") != "N" else "disruption"
+
+
+def reachability_edges(connects: list[tuple[str, str]], zone: dict[str, str],
+                       allowed: set[tuple[str, str]]) -> set[tuple[str, str]]:
+    """E_R (Eqs. 5-6): CONNECTS_TO edges permitted by the network policy (same zone or zones allowed)."""
+    return {(u, v) for u, v in connects
+            if u != v and (zone[u] == zone[v] or (zone[u], zone[v]) in allowed)}
+
+
+def _neighbours(edges: set[tuple[str, str]], reverse: bool = False) -> dict[str, set[str]]:
+    out: dict[str, set[str]] = {}
+    for u, v in edges:
+        a, b = (v, u) if reverse else (u, v)
+        out.setdefault(a, set()).add(b)
+    return out
+
+
+def distances(edges: set[tuple[str, str]], start: str, reverse: bool = False, k: int | None = None) -> dict[str, int]:
+    """Shortest hop distance from `start` over the edges (in-edges if reverse), optionally bounded at k."""
+    nbr = _neighbours(edges, reverse)
+    dist, frontier = {start: 0}, deque([start])
+    while frontier:
+        u = frontier.popleft()
+        if k is not None and dist[u] >= k:
+            continue
+        for v in nbr.get(u, ()):
+            if v not in dist:
+                dist[v] = dist[u] + 1
+                frontier.append(v)
+    return dist
+
+
+def blast_radius(edges: set[tuple[str, str]], asset: str, mode: str, k: int = 1) -> dict[str, int]:
+    """Algorithm 1: BR_k(a, c) as {asset: hops}; the asset itself is included at 0."""
+    return distances(edges, asset, reverse=(mode == "disruption"), k=k)
+
+
+def propagation(edges: set[tuple[str, str]], asset: str, crit_of: dict[str, float], gamma: float) -> float:
+    """Eq. 15: discounted criticality of every asset reachable from `asset`, divided by |V_A| - 1."""
+    others = len(crit_of) - 1
+    if others <= 0:
         return 0.0
-    return min(1.0, sum(value / hops for value, hops in reachable) / total_other_value)
+    dist = distances(edges, asset)
+    return sum(crit_of[v] * gamma ** d for v, d in dist.items() if v != asset) / others
 
 
-def combine(s_env: float, t: float, g: float, a: float, weights=(1.0, 1.0, 1.0)) -> float:
-    wa, wb, wc = weights
-    total = wa + wb + wc
-    uplift = (wa * t + wb * g + wc * a) / total if total else 0.0
-    return round(min(10.0, s_env + (10.0 - s_env) * uplift), 1)
+def roundup(x: float) -> float:
+    """Smallest one-decimal number >= x (CVSS v3.1 Roundup, integer form to avoid float error)."""
+    i = round(x * 100000)
+    return i / 100000.0 if i % 10000 == 0 else (math.floor(i / 10000) + 1) / 10.0
 
 
-WAZUH_MAX_LEVEL = 15
+def evs(env: float, p: float, beta: float) -> float:
+    """Eq. 16 (rounded up to one decimal, like every CVSS score)."""
+    return min(10.0, roundup(env * (1 + beta * p)))
 
 
-def event_score(rule_level: int, cr: str, ir: str, ar: str, g: float, weights=(1.0, 1.0, 1.0)) -> dict:
-    """Severity of an alert that leads to no CVE on its host, on the same 0-10 scale as R.
+def score(asset: dict, vuln: dict, internet_path: bool, p: float, beta: float, alerted: bool = False) -> dict:
+    """EVS(c, u) with every intermediate value, so a report can show how it was reached.
 
-    base    Wazuh's own severity, rule.level 0-15 mapped linearly to 0-10
-    S_event base x the host's highest security-requirement weight (H 1.5, M 1.0, L 0.5), rounded up to
-            one decimal and capped at 10, the way CVSS v3.1 lets CR/IR/AR scale impact
-    R       S_event + the same uplift as for CVEs, with only the blast radius G: there is no CVE (so no EPSS),
-            and the alert itself is already the base (so no extra alert evidence)
+    asset: hostname, cr, ir, ar     vuln: cve, cvss3_vector
     """
-    base = min(10.0, max(0, rule_level) * 10.0 / WAZUH_MAX_LEVEL)
-    weight = max(VALUE[cr], VALUE[ir], VALUE[ar])
-    s_event = min(10.0, math.ceil(round(base * weight * 10, 6)) / 10)
-    return {"base": round(base, 1), "weight": weight, "s_event": s_event, "G": round(g, 3),
-            "R": combine(s_event, 0.0, g, 0.0, weights)}
-
-
-def score_pair(asset: dict, vuln: dict, epss: dict, g: float, a: float, weights=(1.0, 1.0, 1.0)) -> dict:
-    """Every layer of the score, so a report can show how the number was reached.
-
-    asset: hostname, cr, ir, ar, internet_exposed, reached_by_assets
-    vuln:  cve, cvss3_vector, cvss3_score, kev (bool), ssvc_exploitation, ssvc_automatable, ssvc_technical_impact
-    """
-    e = cvss31.exploit_maturity(vuln["kev"], vuln.get("ssvc_exploitation"))
-    mav = cvss31.modified_av(vuln["cvss3_vector"], asset["internet_exposed"], asset["reached_by_assets"])
+    mav = cvss31.modified_av(vuln["cvss3_vector"], internet_path)
+    e = cvss31.exploit_maturity(alerted)
     env = cvss31.environmental(vuln["cvss3_vector"], e, asset["cr"], asset["ir"], asset["ar"], mav)
-    t = epss.get(vuln["cve"], (0.0, 0.0))[1]
-    r = combine(env["environmental"], t, g, a, weights)
-    mission = ssvc.mission_prevalence(asset["cr"], asset["ir"], asset["ar"])
+    value = evs(env["environmental"], p, beta)
     return {
         "asset": asset["hostname"], "cve": vuln["cve"],
         "cvss_base": env["base"], "base_band": cvss31.band(env["base"]),
-        "E": e, "MAV": mav, "CR": asset["cr"], "IR": asset["ir"], "AR": asset["ar"],
-        "env_vector": env["vector"], "s_env": env["environmental"],
-        "epss": epss.get(vuln["cve"], (None, None))[0], "T": t, "G": round(g, 3), "A": a,
-        "R": r, "band": cvss31.band(r),
-        "ssvc": ssvc.outcome(vuln.get("ssvc_exploitation"), vuln.get("ssvc_automatable"),
-                             vuln.get("ssvc_technical_impact"), vuln["kev"], vuln["cvss3_vector"], mission),
-        "kev": vuln["kev"],
+        "AV": cvss31.metrics(vuln["cvss3_vector"]).get("AV"), "MAV": mav, "E": e,
+        "CR": asset["cr"], "IR": asset["ir"], "AR": asset["ar"], "internet_path": internet_path,
+        "env_vector": env["vector"], "env": env["environmental"], "P": round(p, 4),
+        "evs": value, "level": cvss31.band(value), "impact_mode": impact_mode(vuln["cvss3_vector"]),
     }

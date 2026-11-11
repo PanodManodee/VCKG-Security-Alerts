@@ -27,7 +27,7 @@ def test_assets_exist_and_have_valid_requirements(session):
         assert {r["cr"], r["ir"], r["ar"]} <= LEVELS
 
 
-def test_structural_checks_pass():
+def test_structural_checks_pass(session):     # `session` skips the test when Neo4j is down
     assert run(wait=5)
 
 
