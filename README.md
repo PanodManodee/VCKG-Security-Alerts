@@ -273,7 +273,7 @@ naming a CVE):
 2. **Env(c, u):** the CVSS v3.1 Environmental score with metrics from the graph (Table I):
    - CR/IR/AR of the asset;
    - MAV = base AV if the Internet zone reaches the asset's zone through `ALLOWED_TO_REACH`, otherwise N → A;
-   - E = H for the alerted CVE.
+   - E = H for the alerted CVE, otherwise from threat intelligence (KEV or SSVC active → H, poc → P, none → U).
 3. **EVS** = `min(10, Env · (1 + β·P(u)))`. P(u) is the criticality of the assets reachable from u, discounted by γ per hop.
 4. **Level**: Critical / High / Medium / Low.
 

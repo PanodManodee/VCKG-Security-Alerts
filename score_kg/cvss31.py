@@ -7,7 +7,9 @@ graph-derived metrics of Table I:
     CR, IR, AR   attributes of the Asset node of u
     MAV          base AV if an ALLOWED_TO_REACH path connects the Internet zone to the zone of u;
                  otherwise AV:N is lowered to A (A, L, P are unchanged)
-    E            H if the triggering alert maps to c on u; otherwise Not Defined (X)
+    E            exploit code maturity, first match wins (deliberately not the paper's alert-only rule,
+                 see docs/scoring.md §5): an alert reports c on u -> H; c in CISA KEV or SSVC
+                 exploitation 'active' -> H; 'poc' -> P; 'none' -> U; no data -> X
     RL, RC       Not Defined
 """
 from cvss import CVSS3
@@ -33,9 +35,25 @@ def modified_av(base_vector: str, internet_path: bool) -> str:
     return "A" if base_av == "N" and not internet_path else base_av
 
 
-def exploit_maturity(alerted: bool) -> str:
-    """Table I: E = H if the triggering alert maps to this CVE on this asset, otherwise Not Defined."""
-    return "H" if alerted else "X"
+def exploit_maturity(alerted: bool, kev: bool = False, ssvc_exploitation: str | None = None) -> tuple[str, str]:
+    """E and the reason for it.
+
+    Local evidence first (an alert in this environment reports the CVE on this asset), then global threat
+    intelligence: exploited in the wild (CISA KEV, or vulnrichment SSVC exploitation 'active') -> High,
+    public proof of concept -> P, no known exploitation -> Unproven, nothing known -> Not Defined.
+    """
+    expl = (ssvc_exploitation or "").strip().lower()
+    if alerted:
+        return "H", "alert reports this CVE on this asset" + (" (also in KEV)" if kev else "")
+    if kev:
+        return "H", "in CISA KEV (exploited in the wild)"
+    if expl == "active":
+        return "H", "SSVC exploitation: active"
+    if expl == "poc":
+        return "P", "SSVC exploitation: public PoC"
+    if expl == "none":
+        return "U", "SSVC exploitation: none known"
+    return "X", "no exploitation data"
 
 
 def environmental(base_vector: str, e: str, cr: str, ir: str, ar: str, mav: str) -> dict:

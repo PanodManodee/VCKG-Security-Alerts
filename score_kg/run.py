@@ -159,10 +159,10 @@ REMOVE al.event_score, al.event_band, al.event_basis, al.host_risk, al.host_band
 
 # ------------------------------------------------------------------------------------------- outputs
 VULN_FIELDS = ["asset", "software", "source", "cve", "cvss_base", "base_band", "impact_mode", "AV", "MAV",
-               "internet_path", "E", "CR", "IR", "AR", "env_vector", "env", "P", "evs", "level",
+               "internet_path", "E", "E_reason", "CR", "IR", "AR", "env_vector", "env", "P", "evs", "level",
                "epss", "epss_percentile", "kev", "ssvc"]
 ALERT_FIELDS = ["id", "asset", "cve", "rule_id", "description", "rule_level", "count", "first_seen", "last_seen",
-                "vulnerable_on_asset", "cvss_base", "impact_mode", "MAV", "E", "env", "P", "evs", "level",
+                "vulnerable_on_asset", "cvss_base", "impact_mode", "MAV", "E", "E_reason", "env", "P", "evs", "level",
                 "blast_radius_assets"]
 
 
@@ -228,7 +228,7 @@ def write_report(g, meta, vuln_rows, scored, unscored, skipped, beta, gamma, k) 
          f"| EPSS (baseline only, not in the EVS) | model {meta.get('model_version', '-')}, {meta.get('score_date', '-')[:10]} |",
          "",
          "`EVS(c,u) = min(10, Env(c,u) · (1 + β·P(u)))`. Env is the CVSS v3.1 Environmental score with CR/IR/AR of the "
-         "asset, MAV from Internet reachability of its zone and E = H for the alerted CVE (Table I). P(u) is the "
+         "asset, MAV from Internet reachability of its zone, and E = H for the alerted CVE or from KEV/SSVC exploitation otherwise. P(u) is the "
          "discounted criticality of the assets reachable from u.", ""]
 
     # ---- 1. alerted vulnerability instances
@@ -256,7 +256,7 @@ def write_report(g, meta, vuln_rows, scored, unscored, skipped, beta, gamma, k) 
               + (f" — {a['justification']}" if a.get("justification") else "") + ".",
               f"- **Vulnerability:** {r['cve']}, CVSS v3.1 base {r['cvss_base']} ({r['base_band']}). "
               f"{'Present on the asset according to the graph.' if r['vulnerable_on_asset'] else 'Not linked to the asset’s software in the graph (the alert may be an attempt against software the host does not run).'}",
-              f"- **Environmental metrics (Table I):** E = {r['E']} (alert reports this CVE on this asset); "
+              f"- **Environmental metrics (Table I):** E = {r['E']} ({r['E_reason']}); "
               f"MAV = {r['MAV']} (base AV {r['AV']}; zone {a['zone']} {'is' if r['internet_path'] else 'is not'} reachable from the Internet); "
               f"CR/IR/AR = {r['CR']}/{r['IR']}/{r['AR']}. Vector `{r['env_vector']}` → **Env {r['env']}**.",
               f"- **Propagation:** P({r['asset']}) = {r['P']:.4f} → EVS = min(10, {r['env']} × (1 + {beta:g} × {r['P']:.4f})) = **{r['evs']}**.",

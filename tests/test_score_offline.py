@@ -16,9 +16,15 @@ def test_mav_keeps_base_av_with_an_internet_path_and_lowers_n_to_a_without():
         assert cvss31.modified_av(vec, internet_path=False) == av
 
 
-def test_exploit_maturity_only_for_the_alerted_cve():
-    assert cvss31.exploit_maturity(True) == "H"
-    assert cvss31.exploit_maturity(False) == "X"
+def test_exploit_maturity_alert_first_then_threat_intelligence():
+    e = lambda *args: cvss31.exploit_maturity(*args)[0]
+    assert e(True, False, "none") == "H"          # an alert in this environment wins
+    assert e(False, True, "none") == "H"          # KEV
+    assert e(False, False, "active") == "H"
+    assert e(False, False, " PoC ") == "P"        # normalised
+    assert e(False, False, "none") == "U"
+    assert e(False, False, None) == "X"
+    assert "KEV" in cvss31.exploit_maturity(True, True, None)[1]
 
 
 def test_environmental_scores_match_the_specification():
@@ -86,6 +92,9 @@ def test_score_keeps_every_intermediate_value():
                       beta=0.5, alerted=True)
     assert row["MAV"] == "A" and row["E"] == "H" and row["impact_mode"] == "compromise"
     assert row["evs"] == model.evs(row["env"], 0.2, 0.5)
+    quiet = model.score(asset, {"cve": "CVE-2024-0002", "cvss3_vector": FULL, "kev": False,
+                                "ssvc_exploitation": "none"}, internet_path=True, p=0.0, beta=0.5)
+    assert quiet["E"] == "U" and quiet["env"] < quiet["cvss_base"]   # no alert, no exploitation: demoted
 
 
 # --- alerts become vulnerability instances (a, c) ---------------------------------------------------------

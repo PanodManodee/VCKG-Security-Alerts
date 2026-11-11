@@ -88,13 +88,13 @@ def score(asset: dict, vuln: dict, internet_path: bool, p: float, beta: float, a
     asset: hostname, cr, ir, ar     vuln: cve, cvss3_vector
     """
     mav = cvss31.modified_av(vuln["cvss3_vector"], internet_path)
-    e = cvss31.exploit_maturity(alerted)
+    e, e_reason = cvss31.exploit_maturity(alerted, bool(vuln.get("kev")), vuln.get("ssvc_exploitation"))
     env = cvss31.environmental(vuln["cvss3_vector"], e, asset["cr"], asset["ir"], asset["ar"], mav)
     value = evs(env["environmental"], p, beta)
     return {
         "asset": asset["hostname"], "cve": vuln["cve"],
         "cvss_base": env["base"], "base_band": cvss31.band(env["base"]),
-        "AV": cvss31.metrics(vuln["cvss3_vector"]).get("AV"), "MAV": mav, "E": e,
+        "AV": cvss31.metrics(vuln["cvss3_vector"]).get("AV"), "MAV": mav, "E": e, "E_reason": e_reason,
         "CR": asset["cr"], "IR": asset["ir"], "AR": asset["ar"], "internet_path": internet_path,
         "env_vector": env["vector"], "env": env["environmental"], "P": round(p, 4),
         "evs": value, "level": cvss31.band(value), "impact_mode": impact_mode(vuln["cvss3_vector"]),

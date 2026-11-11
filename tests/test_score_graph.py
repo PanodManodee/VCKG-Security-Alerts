@@ -39,3 +39,10 @@ def test_blast_radius_direction(vckg):
     assert set(model.blast_radius(vckg.edges, "Nginx", "compromise", 1)) == {"Nginx", "Web"}
     assert set(model.blast_radius(vckg.edges, "API", "disruption", 1)) == {"API", "Web", "Jenkins"}
     assert set(model.blast_radius(vckg.edges, "Jenkins", "compromise", 1)) == {"Jenkins", "API"}
+
+
+def test_exploit_maturity_from_threat_intelligence_without_alerts(vckg):
+    from score_kg.run import score_vulns
+    rows = {(r["asset"], r["cve"]): r for r in score_vulns(vckg, 0.5, 0.5)}
+    assert rows[("Jenkins", "CVE-2024-23897")]["E"] == "H"        # KEV, no alert needed
+    assert any(r["E"] == "U" for r in rows.values())               # SSVC exploitation none
