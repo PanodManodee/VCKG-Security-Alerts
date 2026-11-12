@@ -48,7 +48,7 @@ Roundup.
 |---|---|
 | CR, IR, AR | the attributes of u's Asset node (`lab/assets.csv`, with a justification) |
 | MAV | the base AV if a path of `ALLOWED_TO_REACH` edges, of any length, connects the Internet zone to zone(u). Otherwise AV:N is lowered to A; A, L and P stay as they are. In the lab, DMZ, APP and DATA are reachable (Internet→DMZ→APP→DATA) and Office is not |
-| E | H if the triggering alert reports c on u; otherwise Not Defined |
+| E | first match wins: **H** if an alert reports c on u; **H** if c is in CISA KEV or CISA vulnrichment SSVC `exploitation = active`; **P** if `poc`; **U** if `none`; otherwise Not Defined. See §5 for how this differs from the paper's Table I |
 | RL, RC | Not Defined |
 | all other metrics | the base values of c |
 
@@ -77,7 +77,8 @@ With β = 0.5, Nginx's EVS is Env × 1.0625.
 | k (blast-radius depth) | 1, as in the paper | `SCORE_BLAST_K`, `--k` |
 | Rounding of the EVS | rounded up to one decimal, like every CVSS score (CVSS Roundup) | `model.roundup` |
 | Internet zone | the Zone named `Internet` | `SCORE_INTERNET_ZONE` |
-| Vulnerabilities on an asset without an alert | scored with E = Not Defined (Table I's "otherwise") | `python -m score_kg vulns` |
+| E (exploit code maturity) | Deliberately broader than the paper's Table I, which has only "H if the alert maps to c on u, otherwise Not Defined". Threat intelligence sets E for every CVE: KEV or SSVC `active` → H, `poc` → P, `none` → U. An alert observed in this environment raises it to H. So the CVSS temporal metric reflects both global exploitation and local evidence, and vulnerabilities nobody exploits are demoted even when there is no alert | `score_kg/cvss31.py::exploit_maturity` |
+| Vulnerabilities on an asset without an alert | scored with E from KEV/SSVC (above) | `python -m score_kg vulns` |
 | Alerted CVE not linked to the asset's software | still scored, and flagged `present_on_asset_per_graph: false` (e.g. an attempt against software the host does not run) | assessment JSON |
 
 `python -m score_kg sensitivity` reports how the ranking changes for β ∈ {0, 0.25, 0.5, 0.75, 1} and
