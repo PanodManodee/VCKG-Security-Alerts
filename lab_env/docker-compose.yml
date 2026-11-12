@@ -104,6 +104,12 @@ services:
       <<: *host-env
       LAB_GATEWAY: 10.10.20.254
       LAB_LOGFILES: apache:/var/log/api/access.log
+      # API -> PostgreSQL (libpq environment used by psql in server.js)
+      PGHOST: 10.10.30.31
+      PGUSER: postgres
+      PGDATABASE: postgres
+      PGPASSWORD: ${POSTGRES_PASSWORD:-Passw0rd!}
+      PGCONNECT_TIMEOUT: "3"
     networks:
       app: { ipv4_address: 10.10.20.21 }
 
@@ -149,6 +155,7 @@ services:
       PC_USER: ${ADMIN_PC_USER:-alice}
       PC_PASSWORD: ${ADMIN_PC_PASSWORD:-Passw0rd!}
       PC_ADMIN: "1"
+      SMB_SHARE: //10.10.30.32/finance        # Admin-PC -> Files-SMB (credentials from SMB_USER / SMB_PASSWORD)
     networks:
       office: { ipv4_address: 10.10.40.41 }
 
@@ -173,7 +180,7 @@ services:
       memlock: { soft: -1, hard: -1 }
       nofile: { soft: 655360, hard: 655360 }
     ports:
-      - "55000:55000"   # Wazuh API (syscollector inventory for asset_kg)
+      - "55500:55000"   # Wazuh API on host port 55500 (Windows/Hyper-V reserves 54950-55049, incl. 55000)
     environment:
       - INDEXER_URL=https://wazuh.indexer:9200
       - INDEXER_USERNAME=admin

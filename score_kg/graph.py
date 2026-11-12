@@ -54,6 +54,8 @@ class VCKG:
     crit: dict                                # hostname -> crit(v)
     vulns: list                               # asset x CVE rows
     connects: list = field(default_factory=list)
+    allowed: set = field(default_factory=set)  # (zone, zone) ALLOWED_TO_REACH
+    zone: dict = field(default_factory=dict)   # hostname -> zone
 
     def internet_path(self, hostname: str) -> bool:
         return self.assets[hostname]["zone"] in self.internet_zones
@@ -74,7 +76,7 @@ def load(wait: int = 60) -> VCKG:
     zone = {h: a["zone"] for h, a in assets.items()}
     edges = model.reachability_edges(connects, zone, allowed)
     crit = {h: model.crit(a["cr"], a["ir"], a["ar"]) for h, a in assets.items()}
-    return VCKG(assets, set(row["zones"]), edges, crit, vulns, connects)
+    return VCKG(assets, set(row["zones"]), edges, crit, vulns, connects, allowed, zone)
 
 
 def cve_details(ids: list[str], wait: int = 60) -> tuple[dict, dict]:

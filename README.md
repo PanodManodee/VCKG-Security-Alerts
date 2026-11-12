@@ -41,7 +41,7 @@ There are two separate Docker Compose setups. They are started and stopped separ
 | Setup | Compose file | Containers | Ports on localhost |
 |---|---|---|---|
 | Knowledge graph | `docker-compose.yml` (root) | `cti-neo4j` | 7474 (browser), 7687 (bolt) |
-| Lab | `lab_env/docker-compose.yml` (project `vckg-lab`) | 13: firewall, kali, 8 hosts, 3 Wazuh | 8443 (dashboard), 9200 (indexer), 55000 (Wazuh API) |
+| Lab | `lab_env/docker-compose.yml` (project `vckg-lab`) | 13: firewall, kali, 8 hosts, 3 Wazuh | 8443 (dashboard), 9200 (indexer), 55500 (Wazuh API) |
 
 The Python packages run on the host, from the repository's `.venv`, and talk to both setups through these ports.
 

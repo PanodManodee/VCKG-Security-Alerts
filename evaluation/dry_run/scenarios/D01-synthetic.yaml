@@ -1,0 +1,28 @@
+# SYNTHETIC: made-up labels to test the evaluation pipeline end to end. Not a result; never report these numbers.
+# It uses the Suricata lab test signature (lab_env/ids/local.rules) that fired on 2026-11-11 around 06:36 UTC.
+id: D01-synthetic
+synthetic: true
+description: Synthetic pipeline test around the Jenkins CLI lab test alert.
+start: 2026-11-11T06:30:00Z
+end: 2026-11-11T06:45:00Z
+attacker: web
+steps:
+  - step: 1
+    start: 2026-11-11T06:36:00Z
+    end: 2026-11-11T06:38:00Z
+    target: Jenkins
+    cve: CVE-2024-23897
+    technique: T1190
+    outcome: success
+    achieved: code_exec
+    pivot: true
+    notes: synthetic
+  - step: 2
+    start: 2026-11-11T06:40:00Z
+    end: 2026-11-11T06:42:00Z
+    target: API
+    technique: T1021
+    outcome: failed
+    achieved: none
+    pivot: false
+    notes: synthetic

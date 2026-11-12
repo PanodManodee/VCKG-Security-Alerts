@@ -16,6 +16,19 @@ if ! id "$USER_NAME" >/dev/null 2>&1; then
     chown -R "$USER_NAME:$USER_NAME" "$home"
 fi
 
+# Admin-PC -> Files-SMB dependency: the user's saved share credentials and a check that uses them.
+if [ -n "${SMB_SHARE:-}" ]; then
+    creds="/home/$USER_NAME/.smbcredentials"
+    printf 'username=%s\npassword=%s\n' "${SMB_USER:-alice}" "${SMB_PASSWORD:-Passw0rd!}" > "$creds"
+    chown "$USER_NAME:$USER_NAME" "$creds" && chmod 600 "$creds"
+    cat > /lab/check-share.sh <<EOF
+#!/bin/sh
+# list the finance share with the saved credentials (lab_env/eval health check)
+exec smbclient "$SMB_SHARE" -A "$creds" -c ls
+EOF
+    chmod +x /lab/check-share.sh
+fi
+
 mkdir -p /run/sshd
 ssh-keygen -A >/dev/null
 # No -e: sshd logs to syslog, so logins land in /var/log/auth.log for the Wazuh agent.

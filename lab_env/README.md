@@ -61,7 +61,7 @@ because the existing certificates are read-only. This is harmless: the old certi
 folder, run the generator again, then `docker compose up -d`.
 
 - Wazuh dashboard: https://localhost:8443 (`admin` / `SecretPassword`). The agents show up 1–2 minutes after the manager starts.
-- Wazuh API: https://localhost:55000 (`wazuh-wui` / `MyS3cr37P450r.*-`)
+- Wazuh API: https://localhost:55500 (host port 55500, because Windows/Hyper-V can reserve 55000) (`wazuh-wui` / `MyS3cr37P450r.*-`)
 - Wazuh indexer: https://localhost:9200 (`admin` / `SecretPassword`)
 - Stop: `docker compose down`. Delete all data as well: `docker compose down -v`.
 

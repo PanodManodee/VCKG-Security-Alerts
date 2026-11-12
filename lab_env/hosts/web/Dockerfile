@@ -10,5 +10,13 @@ RUN sed -i \
       -e 's|^ErrorLog .*|ErrorLog "logs/error_log"|' \
       /usr/local/apache2/conf/httpd.conf \
  && grep -nE '^(ErrorLog|\s*CustomLog)' /usr/local/apache2/conf/httpd.conf
+# Web -> API dependency: /api/* is served by the API (mod_proxy), so /api/users needs the API and,
+# behind it, PostgreSQL.
+COPY hosts/web/proxy-api.conf /usr/local/apache2/conf/extra/proxy-api.conf
+RUN sed -i -e 's|^#LoadModule proxy_module |LoadModule proxy_module |' \
+           -e 's|^#LoadModule proxy_http_module |LoadModule proxy_http_module |' \
+           /usr/local/apache2/conf/httpd.conf \
+ && echo 'Include conf/extra/proxy-api.conf' >> /usr/local/apache2/conf/httpd.conf \
+ && grep -nE '^LoadModule proxy(_http)?_module|proxy-api' /usr/local/apache2/conf/httpd.conf
 ENTRYPOINT ["/lab/entrypoint.sh"]
 CMD ["httpd-foreground"]

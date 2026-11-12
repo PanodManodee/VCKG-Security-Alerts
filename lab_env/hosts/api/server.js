@@ -1,8 +1,25 @@
-// Dummy REST API for the lab (no dependencies). All data is fake.
+// REST API for the lab. All data is fake.
+// /users and /orders are read from PostgreSQL on every request (lab/asset_edges.csv: API -> PostgreSQL),
+// so the API really depends on the database: when PostgreSQL is down they return 503. The connection
+// comes from the standard libpq environment (PGHOST, PGUSER, PGPASSWORD, PGDATABASE) and uses psql,
+// which keeps the image free of npm dependencies.
 // Every request is written to /var/log/api/access.log in Apache combined format, which the Wazuh
 // agent reads with its web access-log rules.
 const fs = require("fs");
 const http = require("http");
+const { execFile } = require("child_process");
+
+function query(sql, columns) {
+  return new Promise((resolve, reject) => {
+    execFile("psql", ["-X", "-tA", "-F", "\t", "-c", sql], { timeout: 4000 }, (err, stdout) => {
+      if (err) return reject(err);
+      resolve(stdout.trim().split("\n").filter(Boolean).map((line) => {
+        const cells = line.split("\t");
+        return Object.fromEntries(columns.map((c, i) => [c, cells[i]]));
+      }));
+    });
+  });
+}
 
 fs.mkdirSync("/var/log/api", { recursive: true });
 const accessLog = fs.createWriteStream("/var/log/api/access.log", { flags: "a" });
@@ -20,27 +37,27 @@ function logRequest(req, status, bytes) {
     `${status} ${bytes} "${ref}" "${ua}"\n`);
 }
 
-const users = [
-  { id: 1, name: "Alice Example", email: "alice@lab.local", role: "admin" },
-  { id: 2, name: "Bob Example", email: "bob@lab.local", role: "staff" },
-];
-const orders = [
-  { id: 1001, user_id: 2, sku: "A-100", qty: 3 },
-  { id: 1002, user_id: 1, sku: "A-200", qty: 1 },
-];
-
 const routes = {
-  "/": { service: "acme-api", node: process.version },
-  "/health": { status: "ok" },
-  "/users": users,
-  "/orders": orders,
+  "/": async () => ({ service: "acme-api", node: process.version }),
+  "/health": async () => ({ status: "ok" }),           // the API process itself, no database
+  "/users": () => query("select id, name, email from customers order by id", ["id", "name", "email"]),
+  "/orders": () => query("select id, customer_id, sku, qty from orders order by id", ["id", "customer_id", "sku", "qty"]),
 };
 
 http
-  .createServer((req, res) => {
-    const body = routes[req.url.split("?")[0]];
-    const status = body ? 200 : 404;
-    const payload = JSON.stringify(body ?? { error: "not found" });
+  .createServer(async (req, res) => {
+    const route = routes[req.url.split("?")[0]];
+    let status = 200, body;
+    if (!route) {
+      status = 404; body = { error: "not found" };
+    } else {
+      try {
+        body = await route();
+      } catch (err) {
+        status = 503; body = { error: "database unavailable" };
+      }
+    }
+    const payload = JSON.stringify(body);
     res.writeHead(status, { "Content-Type": "application/json", "X-Powered-By": `Node.js ${process.version}` });
     res.end(payload);
     logRequest(req, status, Buffer.byteLength(payload));

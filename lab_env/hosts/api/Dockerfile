@@ -4,6 +4,9 @@ FROM node:21.6.1-bookworm-slim
 ARG WAZUH_VERSION=4.9.2
 COPY common/ /lab/
 RUN sed -i 's/\r$//' /lab/*.sh && chmod +x /lab/*.sh && /lab/install-wazuh-agent.sh "$WAZUH_VERSION"
+# psql: /users and /orders read PostgreSQL (API -> PostgreSQL dependency)
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends postgresql-client \
+ && rm -rf /var/lib/apt/lists/*
 COPY hosts/api/server.js /app/server.js
 EXPOSE 3000
 ENTRYPOINT ["/lab/entrypoint.sh"]
