@@ -1,0 +1,13 @@
+# Health check of each host's own service, run inside its container by `python -m eval_kg measure-deps`.
+# A check fails when the service or anything it really depends on is down; the disruption runner stops one
+# host at a time and records which other hosts' checks fail (the observed dependents).
+# service = docker compose service name; command runs with `sh -c` and must exit 0 when healthy.
+asset,service,command
+Nginx,nginx,curl -fsS -m 8 -o /dev/null http://localhost/
+Web,web,curl -fsS -m 8 -o /dev/null http://localhost/api/users
+API,api,curl -fsS -m 8 -o /dev/null http://localhost:3000/users
+Jenkins,jenkins,/lab/run-smoke.sh
+PostgreSQL,postgresql,pg_isready -q -h localhost
+Files-SMB,files-smb,pgrep -x smbd
+Admin-PC,admin-pc,/lab/check-share.sh
+Dep-PC,dep-pc,pgrep -x sshd

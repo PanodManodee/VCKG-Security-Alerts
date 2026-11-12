@@ -1,0 +1,17 @@
+# Pentest scenario record (copy to <id>.yaml). Times in UTC (ISO 8601, e.g. 2026-11-20T09:15:00Z).
+id: S01-example
+description: What the scenario tests, in one sentence.
+start: 2026-11-20T09:00:00Z      # whole scenario window (alerts inside it are ranked together)
+end: 2026-11-20T10:00:00Z
+attacker: kali                    # where the scenario starts
+steps:
+  - step: 1
+    start: 2026-11-20T09:05:00Z
+    end: 2026-11-20T09:10:00Z
+    target: Jenkins               # asset hostname as in lab/assets.csv
+    cve: CVE-2024-23897           # the CVE the step targets; leave empty for steps without one
+    technique: T1190              # ATT&CK id, for the record
+    outcome: success              # success | failed
+    achieved: code_exec           # none | code_exec | data_access
+    pivot: true                   # was this host then used to reach another one?
+    notes: Short free text (tool, evidence file).
