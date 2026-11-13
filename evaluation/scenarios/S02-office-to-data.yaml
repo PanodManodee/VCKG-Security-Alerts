@@ -1,0 +1,38 @@
+# Real attack chain run against the lab on 2026-11-13 (UTC). Foothold in the Office zone (admin workstation).
+# Office -> DATA is allowed by policy, so a compromised workstation reaches the file server and the database.
+id: S02-office-to-data
+description: Office workstation reaches DATA with stored/known credentials; SSH lateral move attempted.
+start: 2026-11-13T08:58:04Z
+end: 2026-11-13T08:58:12Z
+attacker: admin-pc
+steps:
+  - step: 1
+    start: 2026-11-13T08:58:05Z
+    end: 2026-11-13T08:58:08Z
+    target: Files-SMB
+    cve:
+    technique: T1021.002
+    outcome: success
+    achieved: data_access
+    pivot: true
+    notes: Mapped //10.10.30.32/finance with the credentials stored on the workstation (~/.smbcredentials); listed salaries_2026.csv. evidence s02_smb_finance.txt
+  - step: 2
+    start: 2026-11-13T08:58:06Z
+    end: 2026-11-13T08:58:09Z
+    target: PostgreSQL
+    cve:
+    technique: T1213
+    outcome: success
+    achieved: data_access
+    pivot: false
+    notes: Office->DATA; read customers (3) from 10.10.30.31 with the lab DB credential. evidence s02_postgres.txt
+  - step: 3
+    start: 2026-11-13T08:58:06Z
+    end: 2026-11-13T08:58:09Z
+    target: Dep-PC
+    cve: CVE-2024-6387
+    technique: T1021.004
+    outcome: failed
+    achieved: none
+    pivot: false
+    notes: OpenSSH 8.9p1 confirmed in the regreSSHion range, but password auth could not be automated and the race was not attempted; logins denied (publickey,password). Generated failed-login events. evidence s02_ssh_deppc.txt

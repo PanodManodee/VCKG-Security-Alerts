@@ -1,0 +1,30 @@
+# Real attack chain run against the lab on 2026-11-13 (UTC). See evaluation/pentest/ for the methods and the
+# captured evidence (file names in each step's notes). Assumed-breach: the chain starts from a foothold in the
+# APP zone (an attacker who has landed on the api host), because S03 shows the firewall contains an external
+# attacker in the DMZ. Times are the real UTC windows recorded by evaluation/pentest/run_pentest.sh.
+id: S01-web-to-data
+description: APP foothold exploits Jenkins (CVE-2024-23897) to read files, then pivots to the database.
+start: 2026-11-13T08:58:00Z
+end: 2026-11-13T08:58:12Z
+attacker: api
+steps:
+  - step: 1
+    start: 2026-11-13T08:58:03Z
+    end: 2026-11-13T08:58:06Z
+    target: Jenkins
+    cve: CVE-2024-23897
+    technique: T1190
+    outcome: success
+    achieved: data_access
+    pivot: true
+    notes: Unauthenticated CLI @-file read (jenkins-cli.jar, connect-node @/etc/passwd) from api to 10.10.20.22; leaked /etc/passwd incl. root. evidence s01_jenkins_passwd.txt
+  - step: 2
+    start: 2026-11-13T08:58:04Z
+    end: 2026-11-13T08:58:07Z
+    target: PostgreSQL
+    cve:
+    technique: T1213
+    outcome: success
+    achieved: data_access
+    pivot: true
+    notes: APP->DATA pivot; read customers (3) and orders (2) rows with the libpq credentials in the api environment. evidence s01_postgres_dump.txt
