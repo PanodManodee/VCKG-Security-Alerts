@@ -18,7 +18,8 @@ NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7687")
 NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
 NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "change-me-please")
 
-FIRST_CVE_YEAR = 1999
+FIRST_CVE_YEAR = 1999  # cvelistV5 and CVE2CAPEC both cover CVE ids back to this year
+NVD_FIRST_YEAR = 2002  # NVD's yearly JSON feeds publish nothing earlier; requesting them 404s
 _since = os.getenv("CTI_SINCE_YEAR", "").strip()
 SINCE_YEAR = int(_since) if _since else FIRST_CVE_YEAR
 

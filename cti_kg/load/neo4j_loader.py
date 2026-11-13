@@ -46,6 +46,13 @@ def wipe(session) -> None:
     session.run("MATCH (n) CALL (n) { DETACH DELETE n } IN TRANSACTIONS OF 10000 ROWS")
 
 
+def wipe_only() -> None:
+    """Delete everything in Neo4j and exit, without loading. Standalone counterpart to load(do_wipe=True)."""
+    with driver() as drv, drv.session() as session:
+        print("wiping database")
+        wipe(session)
+
+
 # `sources` is unioned rather than overwritten, since the same node/edge (e.g. a CPE) can
 # appear in several shards or come from several runs.
 _SET_PROPS = ("WITH x, r, coalesce(x.sources, []) AS old SET x += r.props "

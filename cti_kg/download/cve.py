@@ -45,8 +45,10 @@ def download_cvelist(since_year: int):
 
 
 def download_nvd(since_year: int, force=False):
-    """Download NVD 2.0 JSON feeds for each year >= since_year. These are used to populate the graph with CVE metadata and fill in the missing CVE records from cvelistV5."""
-    for year in range(since_year, date.today().year + 1):
+    """Download NVD 2.0 JSON feeds for each year >= since_year (clamped to NVD_FIRST_YEAR, the
+    earliest year NVD actually publishes a feed for). These are used to populate the graph with
+    CVE metadata and fill in the missing CVE records from cvelistV5."""
+    for year in range(max(since_year, config.NVD_FIRST_YEAR), date.today().year + 1):
         fetch(
             config.NVD_FEED_URL.format(year=year),
             config.nvd_feed_path(year),

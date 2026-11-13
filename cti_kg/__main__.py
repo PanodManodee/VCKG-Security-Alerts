@@ -1,4 +1,4 @@
-"""CLI: python -m cti_kg {download,parse,load,validate,stats,all} [--since-year YYYY]"""
+"""CLI: python -m cti_kg {download,parse,load,validate,stats,wipe,all} [--since-year YYYY]"""
 import argparse
 import json
 
@@ -7,11 +7,12 @@ from . import config
 
 def main() -> None:
     ap = argparse.ArgumentParser(prog="cti_kg", description="Build the CTI knowledge graph (CVE/CWE/CAPEC/ATT&CK).")
-    ap.add_argument("command", choices=["download", "parse", "load", "validate", "stats", "all"])
+    ap.add_argument("command", choices=["download", "parse", "load", "validate", "stats", "wipe", "all"],
+                     help="wipe: delete everything in Neo4j and exit, without loading")
     ap.add_argument("--since-year", type=int, default=config.SINCE_YEAR,
                     help=f"earliest CVE id year to ingest (default {config.SINCE_YEAR}; env CTI_SINCE_YEAR)")
     ap.add_argument("--force", action="store_true", help="re-download even if unchanged")
-    ap.add_argument("--wipe", action="store_true", help="delete everything in Neo4j before loading")
+    ap.add_argument("--wipe", action="store_true", help="also delete everything in Neo4j before loading (load/all)")
     args = ap.parse_args()
     cmd = args.command
 
@@ -23,6 +24,10 @@ def main() -> None:
         from .pipeline import build
         report = build(args.since_year)
         print(json.dumps({k: report[k] for k in ("cve", "dangling_edges_dropped", "nodes", "edges")}, indent=2))
+
+    if cmd == "wipe":
+        from .load.neo4j_loader import wipe_only
+        wipe_only()
 
     if cmd in ("load", "all"):
         from .load.neo4j_loader import load

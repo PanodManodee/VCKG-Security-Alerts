@@ -71,6 +71,13 @@ DETACH DELETE n
 """
 
 
+def wipe_only(wait: int = 60) -> None:
+    """Delete the nodes asset_kg created and exit, without loading. Standalone counterpart to load(do_wipe=True)."""
+    with driver(wait) as drv, drv.session() as session:
+        print("removing nodes created by asset_kg")
+        session.run(Q_WIPE, labels=list(NODE_KEYS))
+
+
 def read_csv(name: str) -> list[dict]:
     """Read lab/<name>. Blank lines and lines starting with # are skipped (as in overrides/*.csv)."""
     with open(config.LAB / name, newline="", encoding="utf-8") as fh:
