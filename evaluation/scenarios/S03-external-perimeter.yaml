@@ -1,0 +1,49 @@
+# Real recon/perimeter test run from the Internet zone (kali) on 2026-11-13 (UTC). Shows the firewall contains
+# an external attacker in the DMZ: only the DMZ web ports answer, and APP/DATA/Office are unreachable. This is
+# why S01 and S02 are run assumed-breach from an internal foothold.
+id: S03-external-perimeter
+description: External attacker is contained in the DMZ; Apache probe and a bad DB login raise detections only.
+start: 2026-11-13T08:57:35Z
+end: 2026-11-13T08:58:12Z
+attacker: kali
+steps:
+  - step: 1
+    start: 2026-11-13T08:57:40Z
+    end: 2026-11-13T08:57:56Z
+    target: DMZ
+    cve:
+    technique: T1595
+    outcome: success
+    achieved: none
+    pivot: false
+    notes: nmap -sV from kali; only the DMZ answers (nginx 1.25.3 on 80/443). evidence s03_nmap_dmz.txt
+  - step: 2
+    start: 2026-11-13T08:57:53Z
+    end: 2026-11-13T08:58:05Z
+    target: APP
+    cve:
+    technique: T1210
+    outcome: failed
+    achieved: none
+    pivot: false
+    notes: TCP connect from kali to APP/DATA/Office (Jenkins 8080, PostgreSQL 5432, SSH 22) all blocked by the firewall. evidence s03_contained.txt
+  - step: 3
+    start: 2026-11-13T08:58:02Z
+    end: 2026-11-13T08:58:05Z
+    target: Web
+    cve: CVE-2024-38476
+    technique: T1190
+    outcome: failed
+    achieved: none
+    pivot: false
+    notes: Apache httpd 2.4.58 mod_proxy probed from kali; normal 200 responses only, no information disclosure or RCE achieved. evidence s03_apache_cve_2024_38476.txt
+  - step: 4
+    start: 2026-11-13T08:58:07Z
+    end: 2026-11-13T08:58:10Z
+    target: PostgreSQL
+    cve:
+    technique: T1110
+    outcome: failed
+    achieved: none
+    pivot: false
+    notes: Bad-password login to raise a detectable auth-failure event (Wazuh 50512). evidence noise_pg_badlogin.txt
