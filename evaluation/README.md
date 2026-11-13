@@ -10,6 +10,9 @@ or any other input of the score, because that would make the evaluation circular
 | `pentest_results.csv` | for each asset × CVE the team examined: was it exploited (`yes` / `no` / `not_tried`) |
 | `dry_run/` | **synthetic** files to test the pipeline. Its numbers are never reported |
 
+**Running a new pentest session to add to this?** See `pentest/CONTRIBUTING.md` for the step-by-step guide
+(what counts for A1 vs A2, grading, exact file gotchas, how to verify it was picked up).
+
 ## Scenario file
 
 Copy `scenarios/TEMPLATE.yaml.example` to `scenarios/<id>.yaml`. Record times in **UTC**, and record them while

@@ -78,8 +78,42 @@ an intruder or an outage actually affects.
 - **Small lab:** 8 hosts. The CIs will be wide, and they are reported rather than hidden.
 - **Labels from the same team:** the pentest is run and recorded by the authors. Grading by outcome rather than by asset value limits, but does not remove, the bias.
 - **Lab-specific ground truth:** the measured sets describe this lab. Another network would need its own measurement, which the scripts automate.
-- **CTI holds CVEs from 2024 on:** A1 can only use those CVEs.
+- **NVD has no feed before 2002:** `cti_kg` covers CVE ids from 1999 on via `cvelistV5`, but NVD's own CVSS/CPE/CWE enrichment (`download_nvd`, clamped to `NVD_FIRST_YEAR = 2002`) only starts at 2002, since NVD publishes no yearly feed before then. A 1999-2001 CVE can still be in the graph with whatever `cvelistV5` alone provides, just without NVD's CVSS vector unless a CNA supplied one.
 - **Usable reach:** it finds what is stored on a host in common places. It is a lower bound on what a skilled intruder could use.
+
+## Preliminary run (2026-11-14)
+
+First end-to-end run of this pipeline against the current scenario set (`evaluation/scenarios/S01-S03.yaml`,
+the real 2026-11-13 pentest). S04-S07 exist only as raw evidence
+(`evaluation/pentest/evidence/steps_atomics.csv`) and have not been transcribed into scenario YAML yet — the
+team will expand the scenario set and re-run this. These numbers (`data/reports/eval_score_ablation.md`,
+`data/reports/eval_blast_radius.md`) show the pipeline runs end to end and what the report looks like; they
+are **not final results**.
+
+**Part A.** A1 has 4 labelled (asset, CVE) pairs (1 exploited); L0 through L4 all tie at NDCG@10 = 1.000
+(also P@5 = 0.200, P@10 = 0.100, MRR = 1.000, rank of first true item = 1). This is the sample-size ceiling
+effect this doc already flags above, not evidence the ladder steps make no difference: with one positive
+among four pairs, it already ranks first under every step, so there is no room left to show a gain. The one
+directional signal: L4 (EVS) beats the EPSS baseline by +0.500 NDCG@10, though its 95% CI `[+0.000, +0.569]`
+touches zero. A2 currently has 0 of 3 scenarios with any alert instance in their window — a separate,
+structural gap: `score_kg.run.vulnerability_instances()` only counts an alert as a vulnerability instance
+when Wazuh populates `data.vulnerability.cve` on it, and no alert in this lab does yet, including the real
+Jenkins CVE-2024-23897 exploit in S01 (Jenkins has no dedicated Wazuh decoder). A broader per-alert match
+already exists (`alert_kg/context.py`'s `via_techniques`, stored as `vulnerabilities.related_to_alert`) but
+wiring it into A2 was proposed and left for a separate decision — not done in this run.
+
+**Part B.** B4 (the proposed algorithm) is best or tied-best on every ground truth that reflects real
+attacker capability: usable reach (P/R/F1 = 1.000/1.000/1.000), dependents (1.000/0.938/0.958), and the
+combined per-(asset, CVE) set across 288 instances (1.000/0.997/0.998). B2 (zone-level) only wins on raw
+network reachability (1.000/1.000/1.000) — exactly what this doc predicted above before measuring, which is
+itself evidence the measurement design is doing what it is supposed to. B1 (unrestricted k-hop) shows the
+"no rules" failure mode concretely: 253-912 non-asset nodes returned per query, against 0 for every other
+variant. The downstream L4-ranking-by-variant table is flat at NDCG@10 = 1.000 for every variant — that
+inherits A1's ceiling effect above, it is not a Part B finding.
+
+**What would change this:** more real scenarios (past 5, the bootstrap resamples over scenarios rather than
+over items — a stronger guarantee) and closing the A2 CVE-matching gap would both widen A1/A2's labelled set
+past the current ceiling. Neither is done in this run.
 
 ## Running
 
